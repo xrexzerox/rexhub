@@ -11,8 +11,18 @@ services:
     autoDeploy: true
     envVars:
       - key: PROVIDER_TIMEOUT_MS
-        value: "20000"            # per-scraper hard cap; aggregate answers within ~21s
+        value: "20000"            # per-scraper hard cap
+      - key: RESPONSE_DEADLINE_MS
+        value: "20000"            # absolute max wait for one stream response
+      - key: EARLY_MIN_MS
+        value: "4000"             # floor wait before an early response
+      - key: EARLY_ROWS
+        value: "8"                # respond early once this many rows landed
+      - key: STREAM_CACHE_TTL_MS
+        value: "1800000"          # repeat requests answered instantly for 30min
       - key: MAX_ROWS
         value: "100"
       - key: SKIP_PROVIDERS
         value: "torrents,tagalogtorrents"
+      - key: KEEP_WARM
+        value: "true"             # self-ping /healthz every 14min (kills cold starts)

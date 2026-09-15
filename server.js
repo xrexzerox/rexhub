@@ -13,22 +13,23 @@
 "use strict";
 
 const http = require("http");
-const { loadProviders, runAll, stats, imdbToTmdb } = require("./lib/runner");
+const { loadProviders, getStreamsCached, stats, imdbToTmdb } = require("./lib/runner");
 
 const PORT = parseInt(process.env.PORT || "10000", 10);
 const ADDON_ID = process.env.ADDON_ID || "community.nvio.all";
-const VERSION = process.env.ADDON_VERSION || "1.0.0";
+const VERSION = process.env.ADDON_VERSION || "1.0.1";
 const ADDON_NAME = process.env.ADDON_NAME || "NVio All Streams";
 const HOST = process.env.RENDER_EXTERNAL_URL || ""; // Render injects this
 
 loadProviders();
 
-function json(res, code, obj) {
+function json(res, code, obj, extraHeaders) {
   const body = JSON.stringify(obj);
   res.writeHead(code, {
     "Content-Type": "application/json; charset=utf-8",
     "Access-Control-Allow-Origin": "*",
     "Cache-Control": "no-store",
+    ...(extraHeaders || {}),
   });
   res.end(body);
 }
@@ -94,7 +95,8 @@ function statusPage(res) {
 <body style="font-family:sans-serif;max-width:760px;margin:40px auto;color:#222">
 <h1>${ADDON_NAME} <small style="color:#888">v${VERSION}</small></h1>
 <p>Addon URL for Nuvio / NuvioTV:<br><b>${HOST || "http://localhost:" + PORT}/manifest.json</b></p>
-<p><b>${st.loaded}</b> scrapers loaded · uptime ${st.uptimeSec}s · torrent lanes skipped: ${st.skipped.join(", ")}</p>
+<p><b>${st.loaded}</b> scrapers loaded · uptime ${st.uptimeSec}s · stream cache: ${st.cacheEntries} entries (TTL ${st.cacheTtlSec}s)</p>
+<p style="color:#888">torrent lanes skipped: ${st.skipped.join(", ")}</p>
 <p>${rows}</p>
 ${st.loadErrors.length ? "<p style='color:#b00'>load errors: " + st.loadErrors.join("; ") + "</p>" : ""}
 </body></html>`);
@@ -117,13 +119,13 @@ const server = http.createServer(async (req, res) => {
     if (streamMatch) {
       const kind = streamMatch[1] === "series" ? "tv" : "movie";
       const parsed = parseStreamId(streamMatch[2], streamMatch[1] === "series");
-      if (!parsed) return json(res, 200, { streams: [] });
+      if (!parsed) return json(res, 200, { streams: [] }, { "X-Cache": "badid" });
 
       let tmdbId = parsed.imdb ? await imdbToTmdb(parsed.id, kind) : parsed.id;
-      if (!tmdbId) return json(res, 200, { streams: [] });
+      if (!tmdbId) return json(res, 200, { streams: [] }, { "X-Cache": "badid" });
 
-      const { streams } = await runAll(kind, tmdbId, parsed.season, parsed.episode);
-      return json(res, 200, { streams });
+      const result = await getStreamsCached(kind, tmdbId, parsed.season, parsed.episode);
+      return json(res, 200, { streams: result.streams }, { "X-Cache": result.cache });
     }
 
     return json(res, 404, { error: "unknown route", path: p });
@@ -137,4 +139,17 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(`[server] ${ADDON_NAME} v${VERSION} listening on :${PORT}`);
   console.log(`[server] manifest: ${HOST || "http://localhost:" + PORT}/manifest.json`);
+
+  // v1.0.1 keep-warm: Render free tier idles an instance after ~15min without
+  // traffic, and the next request then eats a ~50s cold start. A self-ping
+  // every 14min keeps it awake. Disable with KEEP_WARM=false (note: Render's
+  // free allowance is 750 instance-hours/month - one always-on service fits).
+  if ((process.env.KEEP_WARM || "true") === "true" && HOST) {
+    const url = HOST.replace(/\/$/, "") + "/healthz";
+    const ping = () => fetch(url).catch(() => {});
+    ping();
+    const iv = setInterval(ping, 14 * 60 * 1000);
+    if (iv.unref) iv.unref();
+    console.log(`[server] keep-warm self-ping every 14min -> ${url}`);
+  }
 });
