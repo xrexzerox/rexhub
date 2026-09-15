@@ -5,18 +5,30 @@ single Stremio-protocol addon. NuvioTV (and phone Nuvio) talks to one URL;
 a small Node service fans each stream request out to every scraper in
 parallel and merges all rows into one response.
 
-**v1.0.1 speed model** (fixes "slow when fetching streams"):
+**v1.1 speed model** (fixes "slow when fetching streams"):
 
-1. **Early exit** - the response returns as soon as 8+ rows have landed after
-   a 4s floor, instead of waiting for the dozen always-slow scrapers to hit
-   the 20s cap. Typical uncached answer: **4-8s** (was: always ~20s).
-2. **Stream cache** - the same id/season/episode is answered **instantly**
+1. **Early exit** - the response returns as soon as 6+ rows have landed after
+   a 4s floor (or 20+ scrapers finished with at least one row), instead of
+   waiting for the dozen always-slow scrapers to hit the cap. Typical
+   uncached answer: **4-6s** (was: always ~20s in v1.0.0).
+2. **Mid checkpoint** - a sparse title that found 1+ row but few finished
+   scrapers no longer sits on the deadline: at ~9s it answers with whatever
+   it has (worst case 15s, down from 20s).
+3. **Stream cache** - the same id/season/episode is answered **instantly**
    from an in-memory TTL cache (30 min). Nuvio re-asks the same id on the
    detail screen and when you press play.
-3. **In-flight dedup** - simultaneous identical requests share one fan-out.
-4. **Stale-while-revalidate** - an expired entry is served immediately while
+4. **In-flight dedup** - simultaneous identical requests share one fan-out.
+5. **Stale-while-revalidate** - an expired entry is served immediately while
    a background refresh updates it.
-5. **Keep-warm** - on Render, the service self-pings `/healthz` every 14 min
+6. **Full cache completion** - rows that land *after* the early answer used
+   to be thrown away. Now a background pass folds them into the cache entry:
+   re-opening the same title returns the complete set instantly (watch for
+   the `[runner] FULL ...` log line).
+7. **TMDB coalescing** - every scraper resolves its own TMDB metadata, so one
+   fan-out used to fire ~35 identical `api.themoviedb.org` calls at once.
+   A transparent fetch shim collapses them into one round trip and caches
+   responses for 10 min (`TMDB_CACHE_TTL_MS`).
+8. **Keep-warm** - on Render, the service self-pings `/healthz` every 14 min
    so the free tier never idles (kills the ~50s cold start). Disable with
    `KEEP_WARM=false`.
 
@@ -29,11 +41,11 @@ NuvioTV ──▶ /stream/movie/tmdb:969681.json
                  │
                  ├─ kisskh ─┐
                  ├─ pencuri ┤
-                 ├─ vidfast ┼─▶ parallel (each capped 20s)
+                 ├─ vidfast ┼─▶ parallel (each capped 15s)
                  ├─ 4khdhub ┤
                  └─ ...38   ┘
                  ▼
-        respond at 4-8s with whatever landed (or 20s hard max)
+     respond at 4-6s with whatever landed · 9s sparse checkpoint · 15s max
 ```
 
 The scraper files in `providers/` are byte-for-byte the same JS the Nuvio app
@@ -68,17 +80,20 @@ Remove + re-add the addon after redeploying the service with changes.
 | Var | Default | Meaning |
 |-----|---------|---------|
 | `PORT` | `10000` | Listen port (Render sets it automatically) |
-| `PROVIDER_TIMEOUT_MS` | `20000` | Hard cap per scraper |
-| `RESPONSE_DEADLINE_MS` | `20000` | Absolute max wait for one stream response |
+| `PROVIDER_TIMEOUT_MS` | `15000` | Hard cap per scraper (v1.1: was 20000) |
+| `RESPONSE_DEADLINE_MS` | `15000` | Absolute max wait for one stream response |
 | `EARLY_MIN_MS` | `4000` | Floor wait before an early response |
-| `EARLY_ROWS` | `8` | Respond early once this many rows landed (`999` = old always-wait behavior) |
-| `EARLY_DONE_PROVIDERS` | `25` | Also respond early once this many scrapers finished with ≥1 row |
+| `EARLY_ROWS` | `6` | Respond early once this many rows landed (`999` = old always-wait behavior) |
+| `EARLY_DONE_PROVIDERS` | `20` | Also respond early once this many scrapers finished with ≥1 row |
+| `MID_MIN_MS` | `9000` | Second checkpoint: sparse titles answer here once ≥1 row exists |
 | `STREAM_CACHE_TTL_MS` | `1800000` | Cache freshness window (30 min) |
 | `CACHE_MAX` | `300` | Max cached ids (oldest evicted) |
 | `MAX_ROWS` | `100` | Rows returned (deduped by URL, provider order) |
 | `SKIP_PROVIDERS` | `torrents,tagalogtorrents` | Comma-separated ids to skip |
 | `KEEP_WARM` | `true` | Self-ping `/healthz` every 14 min on Render (needs `RENDER_EXTERNAL_URL`) |
 | `TMDB_API_KEY` | (bundled) | Used only to translate `tt…` IMDb ids to TMDB |
+| `TMDB_CACHE_TTL_MS` | `600000` | v1.1: coalesced TMDB metadata cache window (10 min) |
+| `TMDB_CACHE_MAX` | `500` | v1.1: max cached TMDB responses (oldest evicted) |
 | `ADDON_NAME` / `ADDON_ID` / `ADDON_VERSION` | see server.js | Manifest identity |
 
 ## Notes & limits
@@ -97,7 +112,10 @@ Remove + re-add the addon after redeploying the service with changes.
   datacenter IPs, so those lanes are quieter from Render than from your
   phone's ISP. That's upstream behavior, not a bug.
 - **Logs:** every request logs per-scraper results -
-  `[runner] pencuri: 2 rows in 2100ms`, `[runner] timeout kisskh >20000ms` -
+  `[runner] pencuri: 2 rows in 2100ms`, `[runner] timeout kisskh >15000ms
+  (rows dropped)` (only scrapers that genuinely hit the cap log this),
+  `[runner] FULL movie 123: 20 rows (respond had 8)` (late rows folded into
+  the cache - re-open the title to get them) -
   making slow or dead sources obvious at a glance.
 
 ## Local run

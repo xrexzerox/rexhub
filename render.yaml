@@ -11,13 +11,20 @@ services:
     autoDeploy: true
     envVars:
       - key: PROVIDER_TIMEOUT_MS
-        value: "20000"            # per-scraper hard cap
+        value: "15000"            # per-scraper hard cap (v1.1: was 20000)
       - key: RESPONSE_DEADLINE_MS
-        value: "20000"            # absolute max wait for one stream response
+        value: "15000"            # absolute max wait for one stream response
       - key: EARLY_MIN_MS
         value: "4000"             # floor wait before an early response
       - key: EARLY_ROWS
-        value: "8"                # respond early once this many rows landed
+        value: "6"                # respond early once this many rows landed
+      - key: EARLY_DONE_PROVIDERS
+        value: "20"               # ...or this many scrapers finished with >=1 row
+      - key: MID_MIN_MS
+        value: "9000"             # v1.1: second checkpoint - sparse requests
+                                  # answer here once >=1 row exists
+      - key: TMDB_CACHE_TTL_MS
+        value: "600000"           # v1.1: coalesced TMDB metadata cache (10 min)
       - key: STREAM_CACHE_TTL_MS
         value: "1800000"          # repeat requests answered instantly for 30min
       - key: MAX_ROWS
