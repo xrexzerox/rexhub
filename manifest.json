@@ -1,0 +1,968 @@
+{
+  "name": "NV Plugins",
+  "version": "4.43.1",
+  "description": "nv-plugins 4.43.0: eclipsia swap-in - 13 providers replaced with the codeberg eclipsia/nuvio-plugin sources the user pointed at (anikototv/zyrvael, playimdb/zevran, purstream/wrenok, moviesdrive/vornix, cinemacity/svartok, vidfast/nyxora, cinefreak/novus, moviebox/mavonyx, movieshunt/kryxalia, castle/karnis, movieblast/jyniq, 4khdhub/hexion, vidlink/haylox) and 10 providers ADDED per the same user directive (bingr, vegamovies, showbox, reanime, animeworld, vidcore, animesalt, vidking, vidrock, ctgmovies) - 32 -> 42 scrapers. All 23 files are the readable eclipsia implementations with device-killer fixes only: guarded atob (realm may lack it), require(crypto-js) -> embedded pure-JS crypto (castle AES subset, HMAC-SHA256 parity-verified vs node:crypto, TripleDES-CBC parity-verified vs node:crypto), require(cheerio) -> embedded nv cheerio-lite v2 (parity-tested vs real cheerio), URLSearchParams -> nvQs, TextDecoder -> nvUtf8Decode, retry sleeps guarded (realm timers optional), and 7 corrupted a-href selectors in the eclipsia sources repaired (their lanes silently returned nothing upstream). Subtitles: English/Tagalog tracks pass through wherever upstream provides them; dual-audio rows keep their language labels; provider settings (audio/dub toggles, FebBox token) preserved where the eclipsia file exposes them. Untouched per standing rules: netmirror (verbatim soryn), torrents/torrentio merge + seeders floor, kisskh/asianhub/pinoyhub/tagalogtorrents, cinejoy, miruro, pencuri, nakios, topcartoons, animotvslash, hdhub4u, videasy, vidlove, peachify, cineby, fibwatch, xpass - all byte-identical to 4.42.0. nv-plugins 4.42.0: netmirror v17.0.0 is now VERBATIM the readable implementation the user pasted (soryn shape: plain constants + small async functions, 341 lines/11.6KB vs v16's 1,040 lines) - 'please replace netmirror with pasted code' honored literally. The only addition is a guarded globalThis.atob fallback prepended above the paste, because device runtimes may lack global atob (every previously device-validated netmirror guarded it) and a raw atob ReferenceError would kill all four NewTV platform lanes. With the paste, the Alpha lane and the nvio post-filter tail are gone; the pasted code self-enforces the >=720p floor via its own meetsQualityFilter, is fail-soft per platform, and passes captions through unfiltered (soryn parity). Sandbox: 125988 S1E1 -> net27 1080p +4 subs in 0.6s; junk-id and tv-without-s/e fail-soft [] with no hang; NewTV domains fail-fast from datacenter IPs (retail/device IPs reach them directly, as device-verified in earlier rounds). All other 31 providers byte-identical to 4.41.0. nv-plugins 4.41.0: netmirror v16.0.0 flat soryn port - the file now reads top-to-bottom exactly like the eclipsia soryn.js the user pasted (plain constants + async functions, no classes/state machines/polyfill blocks): 59,339B/1,429 lines -> ~39.5KB/1,040. Lanes kept: net27 embed-tmdb, NewTV (device-hardened vs soryn: 24-domain sequential probe -> 6 concurrent + 60s negative memo + single-flight, so a failed probe can no longer burn 24 dead fetches per call), and the user-validated Alpha lane (Alpha rows only, pure-JS HMAC-SHA256 signed watchpvr). soryn's while(true) episode pagination is capped (8 pages/12 seasons/18-fetch budget), watchpvr retries 3->2, no timers anywhere. onSettings dropped (hasSettings:false); captions fixed to the v15 default English+Filipino. All other 31 providers byte-identical to 4.40.0. nv-plugins 4.32.0: torrents = ONE merged torrent provider (Torrentio + TorrentsDB backends, seeders >= 5 hard floor, 720p/1080p rows only, debrid gear-icon support) - torrentio.js removed as redundant. Playback fixes: anikototv v1.2.0 emits the tokened master plus an ALT host row (ncdn.imgnex.top; same token verified valid on both CDN hosts), miruro v2.9.0 unchanged. Stream-source fixes: videasy v2.1.0 returns the streams it finds inside the 8s budget (progressive 6.8s deadline - previously all rows were raced away), vidlove v2.0.0 re-pointed to the live player API api.vidlove.cc (routes recovered from the player bundle), xpass v2.0.0 ports the site's own AES-GCM v3 data lane (key = SHA256 over the signed token, decrypt verified against the live blob), and moviebox/vidfast/peachify gained the api.vidlove.cc fallback lane (moviebox2 / ipcloud+megaknight / warden+tcloud server subsets). moviesdrive follows the site's host rotation (new1 -> new4) and parallelizes archive resolution. peachify re-enabled. vidlink/cineby verified healthy - vidlink only returns 0 rows for titles whose upstream tops out below 720p (pack rule), and cinemacity remains Cloudflare-gated from datacenter IPs (device-validated historically).",
+  "author": "xrexzerox",
+  "scrapers": [
+    {
+      "id": "pinoymovieshub",
+      "name": "PinoyMoviesHub",
+      "description": "Pinoy movies & series from pinoymovieshub.win: direct pmh- slug lanes, and headerless-probe emission for Mixdrop/Dood direct links (TV-safe when the CDN allows; Byse stays first). v5.8.0: tolerant catalog-id parsing for the addon's new episode ids (asian:pmh-<slug>:<s>:<e>) so every pmh series episode tap keeps its season/episode even when the app passes no args.",
+      "version": "5.8.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/pinoyhub.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8",
+        "mkv",
+        "webm"
+      ],
+      "contentLanguage": [
+        "tl",
+        "fil",
+        "en"
+      ]
+    },
+    {
+      "id": "vidlink",
+      "name": "Vidlink",
+      "description": "Vidlink v2.0.0 - replaced with the eclipsia haylox.js source (readable netmirror-style, codeberg v10.0.0). Device fixes: verbatim (device-clean). Subtitles pass through as upstream emits them (English/Tagalog kept when provided).",
+      "version": "2.0.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/vidlink.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "logo": "https://i.postimg.cc/RZRHQd75/vidlink.png",
+      "contentLanguage": [
+        "en"
+      ],
+      "hasSettings": false
+    },
+    {
+      "id": "vidfast",
+      "name": "VidFast",
+      "description": "VidFast v7.0.0 - replaced with the eclipsia nyxora.js source (readable netmirror-style, codeberg v10.0.0). Device fixes: verbatim (device-clean). Subtitles pass through as upstream emits them (English/Tagalog kept when provided).",
+      "version": "7.0.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/vidfast.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "logo": "https://i.postimg.cc/0Qp8PSx5/vidfast.png",
+      "contentLanguage": [
+        "en"
+      ],
+      "hasSettings": false
+    },
+    {
+      "id": "torrents",
+      "name": "Torrents",
+      "description": "Torrents v1.6 - NEW debrid settings: Debrid Provider (Real-Debrid/Premiumize/AllDebrid/TorBox/...) + API key via the provider gear icon; the key is injected into the Torrentio URL (/{provider}={key}/stream/...) so torrents resolve to INSTANT cached http links instead of magnets (pure P2P fallback stays). 8s cap kept. | v2.0.0 (4.32.0 merge): torrentio.js merged in - one provider now covers Torrentio + TorrentsDB; torrentio v1.2.0 real-field parser (title blob seeders/size/tracker, name line-2 quality); seeders >= 5 hard floor; 720p/1080p rows ONLY; no-magnet rows dropped; seeders-sorted cap 15; debrid prefix on Torrentio when configured",
+      "version": "2.0.0",
+      "author": "Streamline",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/torrents.js",
+      "enabled": true,
+      "hasSettings": true,
+      "formats": [
+        "mkv",
+        "mp4"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=torrentio.strem.fun&sz=128",
+      "contentLanguage": [
+        "en"
+      ]
+    },
+    {
+      "id": "cinemacity",
+      "name": "CinemaCity",
+      "description": "CinemaCity v3.0.0 - replaced with the eclipsia svartok.js source (readable netmirror-style, codeberg v10.0.0). Device fixes: guarded atob fallback prepended (device realm may lack global atob). same CinemaCity upstream, Tagalog/Filipino content unchanged. Subtitles pass through as upstream emits them (English/Tagalog kept when provided).",
+      "version": "3.0.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/cinemacity.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "en"
+      ],
+      "logo": "https://i.postimg.cc/XYjKhS3b/cinemacity.png",
+      "hasSettings": false
+    },
+    {
+      "id": "4khdhub",
+      "name": "4KHDHub",
+      "description": "4KHDHub v5.0.0 - replaced with the eclipsia hexion.js source (readable netmirror-style, codeberg v10.0.0). Device fixes: verbatim (device-clean). keeps sort-order toggle (onSettings). Subtitles pass through as upstream emits them (English/Tagalog kept when provided).",
+      "version": "5.0.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/4khdhub.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "en"
+      ],
+      "logo": "https://i.postimg.cc/DZpW6Xfb/4khdhub.png",
+      "hasSettings": true
+    },
+    {
+      "id": "kisskh",
+      "name": "KissKH",
+      "description": "KissKH v4.4.0 - device-killer fix: fetchJson now rides the repo-standard guarded fetchWithTimeout (hasTimers() gate, 12s cap per request) so one black-holed mirror can no longer stall the nl/ovh/co rotation chain and burn the app's 60s plugin budget. No lane logic changed.",
+      "version": "4.4.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/kisskh.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "en",
+        "ko",
+        "ja",
+        "zh"
+      ],
+      "logo": "https://i.postimg.cc/2yLnTzPP/kisskh.jpg",
+      "hasSettings": true
+    },
+    {
+      "id": "netmirror",
+      "name": "NetMirror",
+      "description": "NetMirror v17 - verbatim user-pasted readable implementation (soryn.js shape): TMDB_API_KEY / PLATFORM_MAP / NEW_TV_BASE_HEADERS / base64 NEW_TV_DOMAINS constants, then small async functions: resolveApiUrl (24-domain checknewtv.php probe, memoized on success) -> fetchFromNetflixDirect (net27.cc embed-tmdb, signed mp4s + captions) -> fetchEpisodesPage/getAllEpisodes (NewTV pagination walk) -> fetchFromPlatform (search -> post -> episodes/player; netflix/primevideo/hotstar/disney) -> getStreams (TMDB title lookup, first platform with rows wins). Self-contained fail-soft: meetsQualityFilter >=720p, per-platform try/catch, module.exports = { getStreams }. Only addition vs the paste: guarded globalThis.atob fallback (device runtimes may lack global atob). No timers, no Alpha lane, no post-filter tail.",
+      "version": "17.0.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/netmirror.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8",
+        "mkv"
+      ],
+      "contentLanguage": [
+        "en"
+      ],
+      "logo": "https://i.postimg.cc/L64M3bYV/netmirror.png",
+      "hasSettings": false
+    },
+    {
+      "id": "asianhub",
+      "name": "AsianHub",
+      "description": "Asian movies & series (Korean/Chinese/Japanese/Thai) from KissAsian + ViewAsian + KissKH: Mixdrop /v/3/ server extractor, headerless-probe TV-safe Dood/Mixdrop rows (webOS can't send Referer)",
+      "version": "2.6.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/asianhub.js",
+      "enabled": true,
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "contentLanguage": [
+        "ko",
+        "zh",
+        "ja",
+        "th",
+        "en"
+      ]
+    },
+    {
+      "id": "tagalogtorrents",
+      "name": "TagalogTorrents",
+      "description": "Tagalog torrent lanes; v1.3.0 drops torrents without seeders entirely (no more seeder-unknown rows)",
+      "version": "1.3.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/tagalogtorrents.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "mkv"
+      ],
+      "contentLanguage": [
+        "tl",
+        "fil",
+        "en"
+      ]
+    },
+    {
+      "id": "miruro",
+      "name": "Miruro",
+      "description": "Miruro v2.9.0 - DEVICE FIX: restores the device-proven v2.7.0 base (fail-open post-filter, CDN hint rotation, ani.zip mal+ani dual-route, pipe circuit breaker, deadline) and grafts the 2026-09 MegaPlay API fix: getSourcesNew AES \"enc\" decrypt + signed master.m3u8 token. Root cause of the device zero-rows: v2.8.0 took CryptoJS from the harness-only __nvRequire shim which does not exist in the real Nuvio runtime (require(\"crypto-js\") is what the app provides) - so every decrypt failed silently on devices. Serves anikoto:* catalog ids as before.",
+      "version": "2.9.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/miruro.js",
+      "enabled": true,
+      "formats": [
+        "m3u8"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=miruro.tv&sz=128",
+      "contentLanguage": [
+        "en",
+        "tl"
+      ],
+      "categories": [
+        "other"
+      ]
+    },
+    {
+      "id": "pencuri",
+      "name": "Pencuri",
+      "description": "Malaysian/Indonesian/Japanese/Thai movies & series from pencurimovie.baby (paired with the asian-catalog addon's 9 Pencuri sections: Movies, Series, Malaysia, Indonesia, Japan, Thailand, Most Viewed, Most Rating, Top IMDb). Plays catalog rows DIRECTLY by navigating the site's real page or episode page (asian:pen-<slug> rows, zero title searching) and resolves TMDB ids by site search for everything else. v1.4.0 ENGLISH SUBTITLES on every row (opensubtitles-v3, parallel fail-soft lanes). v1.3.0 MULTI-SERVER FIX (user report: only 1 stream and its not playing - have 8 server): Streamtape /e/ pages carry TWO get_video links and the #robotlink DIV token (v1.2.0's pick) is a DECOY answering 403/500; the provider now evaluates the innerHTML expression (eval-free: string literals + chained .substring with JS semantics) to get the REAL token, which 302s to tapecontent.net (verified 720p + 1080p) and re-signs per request at play time; quality labels come from the embed page's own filename with zero extra requests. NEW StreamHG lane for hgcloud.to/hglink.to (2 of 8 servers, was an unparseable stub): loader rotates to audinifer.com whose radix-36 packed script unpacks to a signed master.m3u8 (206 verified); quality from the playlist RESOLUTION line. unpackPackedScript is now radix-aware (10..62). Dead-filler voe embeds (Big Buck Bunny placeholder, verified on the sample) are rejected via a placeholder guard. dedupeRows keys the FULL url (Streamtape file ids live in the query - the old query-strip collapsed both embeds into one row). Dood (playmogo/dsvplay) stays turnstile-aware: the gate is unconditional (verified desktop UA / mobile UA / cookie attempts), so gated pages skip in milliseconds. Lanes: MixDrop packed unpack to mxcontent.net mp4, Streamtape expression-token get_video, StreamHG signed m3u8, Dood pass_md5, Voe JS-redirect follow, inline probe for unknown hosts - all parallel, all fail-soft, all hasTimers()-guarded. Hermes-safe: no unescape/escape/btoa/atob.",
+      "version": "1.4.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/pencuri.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=pencurimovie.baby&sz=128",
+      "contentLanguage": [
+        "ms",
+        "id",
+        "en"
+      ],
+      "categories": [
+        "other"
+      ]
+    },
+    {
+      "id": "castle",
+      "name": "Castle",
+      "description": "Castle v7.0.0 - replaced with the eclipsia karnis.js source (readable netmirror-style, codeberg v10.0.0). Device fixes: karnis crypto: require(crypto-js) -> embedded device-proven pure-JS AES subset (__nvCastleCryptoJs), URLSearchParams -> nvQs, guarded atob, TextDecoder -> nvUtf8Decode. Subtitles pass through as upstream emits them (English/Tagalog kept when provided).",
+      "version": "7.0.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/castle.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "en"
+      ],
+      "hasSettings": false,
+      "logo": "https://i.postimg.cc/0NvGzFyK/castle.png"
+    },
+    {
+      "id": "cineby",
+      "name": "Cineby",
+      "description": "Deobfuscated 4.38.0: mangled identifiers renamed, obfuscated literals resolved, formatted; endpoints/behavior identical to 4.37.0 (equivalence-verified). • readable rebuild",
+      "version": "7.0.0",
+      "author": "Nuvio Team (AIO merge)",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/cineby.js",
+      "enabled": true,
+      "formats": [
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "en"
+      ],
+      "hasSettings": true,
+      "logo": "https://i.postimg.cc/dV1HWbqX/cineby.png"
+    },
+    {
+      "id": "movieshunt",
+      "name": "MoviesHunt",
+      "description": "MoviesHunt v7.0.0 - replaced with the eclipsia kryxalia.js source (readable netmirror-style, codeberg v10.0.0). Device fixes: guarded atob fallback. Subtitles pass through as upstream emits them (English/Tagalog kept when provided).",
+      "version": "7.0.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie"
+      ],
+      "filename": "providers/movieshunt.js",
+      "enabled": true,
+      "formats": [
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "en"
+      ],
+      "logo": "https://i.postimg.cc/3Rc34LJj/movieshunt.png",
+      "hasSettings": false
+    },
+    {
+      "id": "purstream",
+      "name": "Purstream",
+      "description": "Purstream v2.0.0 - replaced with the eclipsia wrenok.js source (readable netmirror-style, codeberg v10.0.0). Device fixes: verbatim (device-clean). Subtitles pass through as upstream emits them (English/Tagalog kept when provided).",
+      "version": "2.0.0",
+      "author": "Streamline",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/purstream.js",
+      "enabled": true,
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "contentLanguage": [
+        "fr",
+        "en"
+      ],
+      "logo": "https://i.postimg.cc/bvXqCcz7/purstream.png",
+      "hasSettings": false
+    },
+    {
+      "id": "playimdb",
+      "name": "PlayIMDb",
+      "description": "PlayIMDb v7.0.0 - replaced with the eclipsia zevran.js source (readable netmirror-style, codeberg v10.0.0). Device fixes: verbatim (device-clean). VAplayer source. Subtitles pass through as upstream emits them (English/Tagalog kept when provided).",
+      "version": "7.0.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/playimdb.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "mkv",
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "en"
+      ],
+      "hasSettings": false,
+      "logo": "https://i.postimg.cc/KzjPtYWY/imdb.png"
+    },
+    {
+      "id": "topcartoons",
+      "name": "TopCartoons",
+      "description": "TopCartoons: clean rewrite decoded from AIO and repaired against the live site (episode links skip # anchors, og:video:url direct mp4 extraction), 8s/12s deadlines, nvio post-filter attached. v4.24.0 speed pass: overall provider run capped at 8s (was 12s) so a stalled lane can never hold the stream sheet. v4.39.0 device fix: removed the top-level require(\"cheerio-without-node-native\") that crashed the provider at LOAD on the device QuickJS realm (no require) - guarded loader keeps real cheerio on node and falls back to a pure-JS cheerio-lite subset on device.",
+      "version": "2.5.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/topcartoons.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "en"
+      ],
+      "hasSettings": true,
+      "logo": "https://i.postimg.cc/3xVsbwp8/topcartoons.png"
+    },
+    {
+      "id": "movieblast",
+      "name": "MovieBlast",
+      "description": "MovieBlast v6.0.0 - replaced with the eclipsia jyniq.js source (readable netmirror-style, codeberg v10.0.0). Device fixes: HMAC-SHA256 signature ported to the pack's parity-proven pure-JS sha256/hmac (node:crypto-verified). Subtitles pass through as upstream emits them (English/Tagalog kept when provided).",
+      "version": "6.0.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/movieblast.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "mkv",
+        "m3u8"
+      ],
+      "contentLanguage": [
+        "en"
+      ],
+      "hasSettings": false,
+      "logo": "https://i.postimg.cc/qqkLSyhN/movieblast.png"
+    },
+    {
+      "id": "cinefreak",
+      "name": "CineFreak",
+      "description": "CineFreak v7.0.0 - replaced with the eclipsia novus.js source (readable netmirror-style, codeberg v10.0.0). Device fixes: cheerio -> embedded nv cheerio-lite v2, guarded atob, fixed 1 corrupted a-href selector. Subtitles pass through as upstream emits them (English/Tagalog kept when provided).",
+      "version": "7.0.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/cinefreak.js",
+      "enabled": true,
+      "formats": [
+        "mkv",
+        "mp4"
+      ],
+      "logo": "https://i.postimg.cc/rpDB2284/cinefreak.png",
+      "contentLanguage": [
+        "en"
+      ],
+      "hasSettings": false
+    },
+    {
+      "id": "fibwatch",
+      "name": "FibWatch",
+      "description": "Deobfuscated 4.38.0: mangled identifiers renamed, obfuscated literals resolved, formatted; endpoints/behavior identical to 4.37.0 (equivalence-verified). • readable rebuild",
+      "version": "5.0.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/fibwatch.js",
+      "enabled": true,
+      "formats": [
+        "mkv",
+        "m3u8"
+      ],
+      "logo": "https://i.postimg.cc/sfLR6dMm/fibwatch.png",
+      "contentLanguage": [
+        "en"
+      ],
+      "hasSettings": true
+    },
+    {
+      "id": "hdhub4u",
+      "name": "HDHub4u",
+      "description": "HDHub4u with the live domains source (phisher98 TVVVV repo) + link-hub hops. FULLY DECODED port of the All-in-One-Nuvio provider (4.24.0 merge pass): string tables resolved, decoder machinery stripped, 8s per-call + 8s overall deadlines, node-core requires fail-soft, nvio post-filter attached (en/tl audio gate, >=720p quality gate, cross-provider dedupe). • readable rebuild",
+      "version": "5.0.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/hdhub4u.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "logo": "https://i.postimg.cc/mryRTf0R/hdhub4u.png",
+      "contentLanguage": [
+        "en"
+      ],
+      "hasSettings": true
+    },
+    {
+      "id": "moviebox",
+      "name": "MovieBox",
+      "description": "MovieBox v7.0.0 - replaced with the eclipsia mavonyx.js source (readable netmirror-style, codeberg v10.0.0). Device fixes: guarded retry sleep (realm timers optional). keeps dub-language toggles (onSettings). Subtitles pass through as upstream emits them (English/Tagalog kept when provided).",
+      "version": "7.0.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/moviebox.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "logo": "https://i.postimg.cc/TPwkfqHh/moviebox.png",
+      "contentLanguage": [
+        "en"
+      ],
+      "hasSettings": true
+    },
+    {
+      "id": "moviesdrive",
+      "name": "MoviesDrive",
+      "description": "MoviesDrive v7.0.0 - replaced with the eclipsia vornix.js source (readable netmirror-style, codeberg v10.0.0). Device fixes: cheerio -> embedded nv cheerio-lite v2 (parity-tested vs real cheerio), URLSearchParams -> nvQs, fixed 1 corrupted a-href selector in the eclipsia source. Subtitles pass through as upstream emits them (English/Tagalog kept when provided).",
+      "version": "7.0.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/moviesdrive.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "mkv",
+        "m3u8"
+      ],
+      "logo": "https://i.postimg.cc/bwDbhq9q/moviesdrive.png",
+      "contentLanguage": [
+        "en"
+      ],
+      "hasSettings": false
+    },
+    {
+      "id": "nakios",
+      "name": "Nakios",
+      "description": "Nakios with the live domains source (wooodyhood repo) + player extraction. FULLY DECODED port of the All-in-One-Nuvio provider (4.24.0 merge pass): string tables resolved, decoder machinery stripped, 8s per-call + 8s overall deadlines, node-core requires fail-soft, nvio post-filter attached (en/tl audio gate, >=720p quality gate, cross-provider dedupe). • readable rebuild",
+      "version": "2.0.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/nakios.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "logo": "https://i.postimg.cc/nLwY1pJB/nakios.png",
+      "contentLanguage": [
+        "en"
+      ],
+      "hasSettings": true
+    },
+    {
+      "id": "peachify",
+      "name": "Peachify",
+      "description": "Deobfuscated 4.38.0: mangled identifiers renamed, obfuscated literals resolved, formatted; endpoints/behavior identical to 4.37.0 (equivalence-verified). • readable rebuild",
+      "version": "6.0.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/peachify.js",
+      "enabled": true,
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "logo": "https://i.postimg.cc/tCz8CDH3/peachify.png",
+      "contentLanguage": [
+        "en"
+      ],
+      "hasSettings": true
+    },
+    {
+      "id": "videasy",
+      "name": "VidEasy",
+      "description": "Deobfuscated 4.38.0: dead string-table machinery removed, mangled identifiers renamed, obfuscated literals resolved, formatted; endpoints/behavior identical to 4.37.0 (equivalence-verified). • readable rebuild",
+      "version": "7.0.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/videasy.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "logo": "https://i.postimg.cc/7LHYMtVV/videasy.png",
+      "contentLanguage": [
+        "en"
+      ],
+      "hasSettings": true
+    },
+    {
+      "id": "vidlove",
+      "name": "VidLove",
+      "description": "Deobfuscated 4.38.0: mangled identifiers renamed, obfuscated literals resolved, formatted; endpoints/behavior identical to 4.37.0 (equivalence-verified). • readable rebuild",
+      "version": "7.0.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/vidlove.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8",
+        "mkv"
+      ],
+      "logo": "https://i.postimg.cc/ZRjQytBY/vidlove.png",
+      "contentLanguage": [
+        "en"
+      ],
+      "hasSettings": false
+    },
+    {
+      "id": "xpass",
+      "name": "XPass",
+      "description": "XPass play.xpass.top direct extraction. FULLY DECODED port of the All-in-One-Nuvio provider (4.24.0 merge pass): string tables resolved, decoder machinery stripped, 8s per-call + 8s overall deadlines, node-core requires fail-soft, nvio post-filter attached (en/tl audio gate, >=720p quality gate, cross-provider dedupe). | v2.0.0 (4.32.0): ports the site's own v3 lane - embed page hands a signed /data URL, response is AES-GCM (key = SHA256 spv3-data-response|build|pathname|token), decrypts to backup playlist endpoints; decrypt unit-verified against the live blob; legacy backups lane kept; fail-soft if Cloudflare blocks the device fetch",
+      "version": "2.0.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/xpass.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "mkv",
+        "m3u8"
+      ],
+      "logo": "https://i.postimg.cc/tgqNQxdy/xpass.png",
+      "contentLanguage": [
+        "en"
+      ],
+      "hasSettings": true
+    },
+    {
+      "id": "anikototv",
+      "name": "AnikotoTV",
+      "description": "AnikotoTV v9.0.0 - replaced with the eclipsia zyrvael.js source (readable netmirror-style, codeberg v10.0.0). Device fixes: verbatim (device-clean source: the XMLHttpRequest hits are just the X-Requested-With header). keeps its audio/sub toggles (onSettings): Japanese (Sub) etc.. Subtitles pass through as upstream emits them (English/Tagalog kept when provided).",
+      "version": "9.0.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv",
+        "anime"
+      ],
+      "filename": "providers/anikototv.js",
+      "enabled": true,
+      "formats": [
+        "mp4"
+      ],
+      "logo": "https://i.postimg.cc/JhL3HBR4/anikototv.png",
+      "contentLanguage": [
+        "en"
+      ],
+      "hasSettings": true
+    },
+    {
+      "id": "animotvslash",
+      "name": "AnimeTVSlash",
+      "description": "AnimeTVSlash v7.1.0 - device-killer fix: fetchWithCookies and the plyr master-playlist probe now ride the repo-standard guarded fetchWithTimeout (hasTimers() gate, 15s/12s caps) so a dead host degrades its lane to a skipped row instead of stalling it forever. No lane logic changed.",
+      "version": "7.1.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/animotvslash.js",
+      "enabled": true,
+      "formats": [
+        "m3u8"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=animotvslash.org&sz=128",
+      "contentLanguage": [
+        "en"
+      ],
+      "categories": [
+        "other"
+      ]
+    },
+    {
+      "id": "cinejoy",
+      "name": "Cinejoy",
+      "description": "Cinejoy v3.0.0: device-realistic waterfall. 4.36.0 root cause: the QuickJS plugin runtime ships NO timers and every fetch is one blocking bridge call, so v2.x parallel lanes ran sequentially with all caps inert and blew the app's 60s provider kill -> 0 rows on device. v3.0.0 bounds the provider by fetch count instead: WINGS one server at a time (cdn/m4uhd/lamovie, meta+seed cached) -> vidlove moviebox2 -> native shegu chain only when it can work (cjRelay relay on device, direct binary in node tests). Render addon lane removed (cold wake blocks the bridge 30-60s). Native 4K on Mobile: set the 'Cinejoy relay base URL' setting to your asian-catalog worker (bundle v5.7.0+ carries /cjg + /cjs). Chain re-verified live 2026-09-14.",
+      "version": "3.0.0",
+      "author": "Streamline",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/cinejoy.js",
+      "enabled": true,
+      "hasSettings": true,
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=cinejoy.to&sz=128",
+      "contentLanguage": [
+        "en"
+      ]
+    },
+    {
+      "id": "bingr",
+      "name": "Bingr",
+      "description": "Bingr • 1080p • Mainstream. Subtitles pass through as upstream emits them (English/Tagalog kept when provided). Source: eclipsia xandril.js (codeberg v10.0.0), readable netmirror-style build with device-killer fixes.",
+      "version": "1.1.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/bingr.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8",
+        "mpd"
+      ],
+      "logo": "",
+      "contentLanguage": [
+        "en",
+        "hi"
+      ],
+      "hasSettings": false
+    },
+    {
+      "id": "vegamovies",
+      "name": "VegaMovies",
+      "description": "VegaMovies (HC & VC) • Up-to 4k • Mainstream. Subtitles pass through as upstream emits them (English/Tagalog kept when provided). Source: eclipsia solunix.js (codeberg v10.0.0), readable netmirror-style build with device-killer fixes.",
+      "version": "1.4.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/vegamovies.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8",
+        "mkv"
+      ],
+      "logo": "",
+      "contentLanguage": [
+        "en",
+        "hi"
+      ],
+      "hasSettings": false
+    },
+    {
+      "id": "showbox",
+      "name": "ShowBox",
+      "description": "ShowBox • Up-to 4k • Requires Setup (paste a FebBox uiToken in the provider settings; tokens are decrypted with an embedded pure-JS TripleDES since the device realm has no crypto-js). Subtitles pass through as upstream emits them (English/Tagalog kept when provided). Source: eclipsia pynvix.js (codeberg v10.0.0), readable netmirror-style build with device-killer fixes.",
+      "version": "1.8.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/showbox.js",
+      "enabled": true,
+      "formats": [
+        "m3u8",
+        "mp4",
+        "mkv"
+      ],
+      "logo": "",
+      "contentLanguage": [
+        "en",
+        "bn",
+        "hi",
+        "ja",
+        "pt",
+        "ar"
+      ],
+      "hasSettings": true
+    },
+    {
+      "id": "reanime",
+      "name": "Re:ANIME",
+      "description": "Re:ANIME • Sub/Dub • Anime. Subtitles pass through as upstream emits them (English/Tagalog kept when provided). Source: eclipsia praxiel.js (codeberg v10.0.0), readable netmirror-style build with device-killer fixes.",
+      "version": "1.2.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/reanime.js",
+      "enabled": true,
+      "formats": [
+        "mkv"
+      ],
+      "logo": "",
+      "contentLanguage": [
+        "en",
+        "ja"
+      ],
+      "hasSettings": false
+    },
+    {
+      "id": "animeworld",
+      "name": "AnimeWorld",
+      "description": "AnimeWorld • Multi Dub • Anime. Subtitles pass through as upstream emits them (English/Tagalog kept when provided). Source: eclipsia onyxia.js (codeberg v10.0.0), readable netmirror-style build with device-killer fixes.",
+      "version": "2.8.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/animeworld.js",
+      "enabled": true,
+      "formats": [
+        "m3u8"
+      ],
+      "logo": "",
+      "contentLanguage": [
+        "en",
+        "ja"
+      ],
+      "hasSettings": false
+    },
+    {
+      "id": "vidcore",
+      "name": "Vidcore",
+      "description": "Vidcore • 1080p • Mainstream. Subtitles pass through as upstream emits them (English/Tagalog kept when provided). Source: eclipsia lenyr.js (codeberg v10.0.0), readable netmirror-style build with device-killer fixes.",
+      "version": "1.1.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/vidcore.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "logo": "",
+      "contentLanguage": [
+        "en"
+      ],
+      "hasSettings": false
+    },
+    {
+      "id": "animesalt",
+      "name": "AnimeSalt",
+      "description": "AnimeSalt • Multi Dub • Anime. Subtitles pass through as upstream emits them (English/Tagalog kept when provided). Source: eclipsia gravix.js (codeberg v10.0.0), readable netmirror-style build with device-killer fixes.",
+      "version": "1.1.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/animesalt.js",
+      "enabled": true,
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "logo": "",
+      "contentLanguage": [
+        "en",
+        "ja",
+        "hi",
+        "te",
+        "ta"
+      ],
+      "hasSettings": false
+    },
+    {
+      "id": "vidking",
+      "name": "VidKing",
+      "description": "VidKing • Up-to 4k • Mainstream. Subtitles pass through as upstream emits them (English/Tagalog kept when provided). Source: eclipsia fendrix.js (codeberg v10.0.0), readable netmirror-style build with device-killer fixes.",
+      "version": "1.5.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/vidking.js",
+      "enabled": true,
+      "formats": [
+        "m3u8"
+      ],
+      "logo": "",
+      "contentLanguage": [
+        "en"
+      ],
+      "hasSettings": false
+    },
+    {
+      "id": "vidrock",
+      "name": "VidRock",
+      "description": "VidRock • 1080p • Mainstream (AES-GCM stream keys decrypted by embedded pure-JS crypto). Subtitles pass through as upstream emits them (English/Tagalog kept when provided). Source: eclipsia evyrith.js (codeberg v10.0.0), readable netmirror-style build with device-killer fixes.",
+      "version": "1.1.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/vidrock.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "m3u8"
+      ],
+      "logo": "",
+      "contentLanguage": [
+        "en"
+      ],
+      "hasSettings": false
+    },
+    {
+      "id": "ctgmovies",
+      "name": "CTGMovies",
+      "description": "CTGMovies • 1080p • Mainstream • Regional (carries dual-audio language labels where upstream provides). Subtitles pass through as upstream emits them (English/Tagalog kept when provided). Source: eclipsia durnel.js (codeberg v10.0.0), readable netmirror-style build with device-killer fixes.",
+      "version": "3.2.0",
+      "author": "xrexzerox",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/ctgmovies.js",
+      "enabled": true,
+      "formats": [
+        "mp4",
+        "mkv",
+        "m3u8"
+      ],
+      "logo": "",
+      "contentLanguage": [
+        "en",
+        "bn",
+        "hi",
+        "ja",
+        "ko"
+      ],
+      "hasSettings": false
+    }
+  ]
+}

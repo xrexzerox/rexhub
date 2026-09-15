@@ -1,0 +1,18 @@
+# Render blueprint: push this folder to a GitHub repo, then
+# Render dashboard -> New + -> Blueprint -> pick the repo -> Apply.
+services:
+  - type: web
+    name: nvio-all-addon
+    runtime: node
+    plan: free
+    buildCommand: "true"          # zero npm dependencies - nothing to build
+    startCommand: "node server.js"
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: PROVIDER_TIMEOUT_MS
+        value: "20000"            # per-scraper hard cap; aggregate answers within ~21s
+      - key: MAX_ROWS
+        value: "100"
+      - key: SKIP_PROVIDERS
+        value: "torrents,tagalogtorrents"

@@ -1,0 +1,14 @@
+{
+  "name": "nuvio-all-addon",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Stremio-protocol addon that merges every nv-plugins scraper into one stream source for Nuvio / NuvioTV",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {}
+}
