@@ -17,7 +17,7 @@ const { loadProviders, getStreamsCached, stats, imdbToTmdb } = require("./lib/ru
 
 const PORT = parseInt(process.env.PORT || "10000", 10);
 const ADDON_ID = process.env.ADDON_ID || "community.nvio.all";
-const VERSION = process.env.ADDON_VERSION || "1.1.0";
+const VERSION = process.env.ADDON_VERSION || "1.2.0";
 const ADDON_NAME = process.env.ADDON_NAME || "NVio All Streams";
 const HOST = process.env.RENDER_EXTERNAL_URL || ""; // Render injects this
 
@@ -42,8 +42,9 @@ function manifest() {
     description:
       `One addon, every scraper: merges direct streams from ${stats().loaded} ` +
       `nv-plugins sources (KissKH, Pencuri, VidFast, 4KHDHub, VidKing, NetMirror, ` +
-      `AsianHub, PinoyMoviesHub and more). Torrent lanes are not included - ` +
-      `direct/HLS lanes only.`,
+      `AsianHub, PinoyMoviesHub and more) plus torrent lanes (Torrentio + ` +
+      `TorrentsDB + TagalogTorrents) served as magnets/infoHashes that Nuvio ` +
+      `resolves with debrid or its P2P engine.`,
     logo: "https://raw.githubusercontent.com/" + "nv-plugins/main/README.md", // harmless if 404s
     resources: ["stream"],
     types: ["movie", "series"],
@@ -96,7 +97,7 @@ function statusPage(res) {
 <h1>${ADDON_NAME} <small style="color:#888">v${VERSION}</small></h1>
 <p>Addon URL for Nuvio / NuvioTV:<br><b>${HOST || "http://localhost:" + PORT}/manifest.json</b></p>
 <p><b>${st.loaded}</b> scrapers loaded · uptime ${st.uptimeSec}s · stream cache: ${st.cacheEntries} entries (TTL ${st.cacheTtlSec}s) · tmdb cache: ${st.tmdbCacheEntries} entries</p>
-<p style="color:#888">torrent lanes skipped: ${st.skipped.join(", ")}</p>
+<p style="color:#888">torrent lanes: ON (magnet/infoHash rows)${st.skipped.length ? " · skipped: " + st.skipped.join(", ") : ""}</p>
 <p>${rows}</p>
 ${st.loadErrors.length ? "<p style='color:#b00'>load errors: " + st.loadErrors.join("; ") + "</p>" : ""}
 </body></html>`);

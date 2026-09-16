@@ -1,9 +1,39 @@
 # NVio All Streams - one addon for NuvioTV, every scraper inside
 
-Turns the whole **nv-plugins** scraper pack (40 direct/HLS sources) into a
-single Stremio-protocol addon. NuvioTV (and phone Nuvio) talks to one URL;
-a small Node service fans each stream request out to every scraper in
-parallel and merges all rows into one response.
+Turns the whole **nv-plugins** scraper pack (42 sources - direct/HLS scrapers
+**plus torrent lanes**) into a single Stremio-protocol addon. NuvioTV (and
+phone Nuvio) talks to one URL; a small Node service fans each stream request
+out to every scraper in parallel and merges all rows into one response.
+
+**v1.2 - torrents + provider fixes** (fixes "providers doesn't show fetch"):
+
+1. **Torrent lanes ON** - `torrents` (Torrentio + TorrentsDB) and
+   `tagalogtorrents` now run in the addon. Their rows are emitted as
+   `magnet:` urls plus the standard Stremio torrent fields (`infoHash`,
+   `fileIdx`, `sources`, `behaviorHints.notWebReady`), so Nuvio resolves them
+   with its own debrid account or built-in P2P engine. Same pack rules as
+   always: seeders >= 5, 720p/1080p only. To go back to direct/HLS-only set
+   `SKIP_PROVIDERS=torrents,tagalogtorrents`.
+2. **Device-globals shim** (`lib/device-globals.js`) - several scrapers are
+   written for the app runtime, which auto-injects `CryptoJS` and
+   `SCRAPER_SETTINGS`. On the server those were missing, so the provider's
+   own try/catch swallowed the ReferenceError and the lane silently returned
+   zero rows ("doesn't show fetch"). The shim supplies both globals, which
+   brings back: **anikototv** (verified 4 rows), **castle** (AES-CBC detail
+   decrypt; verified live), **moviebox**'s request signing, **miruro /
+   animotvslash** MegaPlay AES lanes and **xpass**'s crypto fallback.
+3. **vegamovies last-mile fix** - the embedded HTML parser strips `<script>`
+   bodies, but the vcloud/hubcloud "bridge" url lives inside a script tag
+   (`var url = atob(atob('...'))`). The parser now also keeps the raw source,
+   so the bridge is found again (verified: direct 1080p rows).
+4. **movieshunt re-plumbed** - the site moved to movieshunt.monster and made
+   search client-side rendered, and hubcloud rotated domains (.cx -> .ist).
+   The provider now calls the site's own JSON lookup endpoint first
+   (`/lookup.php?q=...`) and accepts any hubcloud TLD (verified: 3x 1080p).
+5. Optional **SCRAPER_SETTINGS_JSON** env var feeds providers their gear-icon
+   settings server-side - e.g. `{"debridProvider":"realdebrid","debridKey":"..."}`
+   turns the torrent lane into instant cached http links, or
+   `{"uiTokens":"..."}` enables showbox.
 
 **v1.1 speed model** (fixes "slow when fetching streams"):
 
@@ -88,8 +118,9 @@ Remove + re-add the addon after redeploying the service with changes.
 | `MID_MIN_MS` | `9000` | Second checkpoint: sparse titles answer here once ≥1 row exists |
 | `STREAM_CACHE_TTL_MS` | `1800000` | Cache freshness window (30 min) |
 | `CACHE_MAX` | `300` | Max cached ids (oldest evicted) |
-| `MAX_ROWS` | `100` | Rows returned (deduped by URL, provider order) |
-| `SKIP_PROVIDERS` | `torrents,tagalogtorrents` | Comma-separated ids to skip |
+| `MAX_ROWS` | `100` | Rows returned (deduped, provider order; torrents deduped by infoHash) |
+| `SKIP_PROVIDERS` | *(empty)* | v1.2: torrent lanes ON by default; set `torrents,tagalogtorrents` for direct/HLS-only |
+| `SCRAPER_SETTINGS_JSON` | *(empty)* | v1.2: provider settings as JSON (debrid provider/key for the torrent lane, showbox `uiTokens`, ...) |
 | `KEEP_WARM` | `true` | Self-ping `/healthz` every 14 min on Render (needs `RENDER_EXTERNAL_URL`) |
 | `TMDB_API_KEY` | (bundled) | Used only to translate `tt…` IMDb ids to TMDB |
 | `TMDB_CACHE_TTL_MS` | `600000` | v1.1: coalesced TMDB metadata cache window (10 min) |
@@ -101,16 +132,25 @@ Remove + re-add the addon after redeploying the service with changes.
 - **Cold start:** handled by `KEEP_WARM` (default on): the service pings its
   own `/healthz` every 14 min so Render's free tier never idles. Turn it off
   if you'd rather save instance-hours and accept a ~50s first request.
-- **Torrent lanes are excluded** (`torrents`, `tagalogtorrents`): their rows
-  are magnet/infohash-based and cannot play over the addon HTTP protocol
-  without a debrid service. They remain available in the plugin pack.
-- **showbox** stays silent without its FebBox `uiToken` setting (by design).
+- **Torrent lanes are ON** (`torrents`, `tagalogtorrents`): rows are
+  magnet/infoHash-based. Nuvio plays them via your debrid account (configure
+  it in Nuvio settings) or its P2P engine; with `SCRAPER_SETTINGS_JSON`
+  debrid keys the addon itself returns instant cached http links instead.
+  Torrentio/TorrentsDB apply the pack's standing rules: seeders >= 5,
+  720p/1080p only.
+- **showbox** stays silent without its FebBox `uiToken` setting - provide it
+  via `SCRAPER_SETTINGS_JSON` (by design, it is a per-user token).
 - **Subtitles:** rows carry the `subtitles` arrays the scrapers emit
   (e.g. Pencuri's 4 English tracks) on a best-effort basis - clients that
   don't read addon subtitles simply ignore them.
-- **Datacenter IPs:** some upstreams (kisskh mirrors, animotvslash) block
-  datacenter IPs, so those lanes are quieter from Render than from your
-  phone's ISP. That's upstream behavior, not a bug.
+- **Datacenter IPs:** some upstreams block datacenter IPs, so those lanes are
+  quieter from Render than from your phone's ISP (kisskh mirrors, moviebox /
+  aoneroom API, xpass embed, vidrock API, fibwatch, apibay/1337x for
+  tagalogtorrents, miruro's own pipe, cinemacity). That's upstream bot
+  protection, not a bug. ctgmovies' host and cinejoy's API were down at the
+  v1.2 release; 4khdhub moved its download buttons behind an obfuscated
+  ad-redirector chain, so it currently only serves titles whose pages still
+  embed direct hubcloud links.
 - **Logs:** every request logs per-scraper results -
   `[runner] pencuri: 2 rows in 2100ms`, `[runner] timeout kisskh >15000ms
   (rows dropped)` (only scrapers that genuinely hit the cap log this),

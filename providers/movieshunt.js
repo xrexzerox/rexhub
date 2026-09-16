@@ -29,6 +29,11 @@ const TMDB_API_URL = "https://api.themoviedb.org/3";
 const TMDB_API_KEY = '307b7b8ef035c6aa336900aef4e203bd';
 const BASE_A_URL = 'https://movieshunt.run';
 const BASE_B_URL = 'https://abhilinks.site';
+// v1.2 addon fix: the search page moved to movieshunt.monster and became
+// client-side rendered (results load from an internal JSON endpoint), so the
+// static <hN class=entry-title> markup parse finds nothing anymore.
+// lookup.php is the endpoint that powers the page - use it first, HTML as fallback.
+const LOOKUP_API_URL = 'https://movieshunt.monster/lookup.php';
 const UAS = [
   'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Mobile Safari/537.36',
   'Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Mobile Safari/537.36',
@@ -120,7 +125,41 @@ function parseSearchResults(html) {
   return results;
 }
 
+// v1.2 addon fix: JSON lookup lane over the same index the site's own search
+// UI uses. Returns the same {title, url} shape parseSearchResults produces.
+async function lookupApiSearch(query) {
+  const results = [];
+  const cleaned = String(query || '').replace(/[^a-zA-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  const qs = cleaned ? [cleaned] : [];
+  const noYear = cleaned.replace(/\s*\d{4}\s*/g, ' ').replace(/\s+/g, ' ').trim();
+  if (noYear && noYear !== cleaned && !qs.includes(noYear)) qs.push(noYear);
+  for (const q of qs.slice(0, 2)) {
+    try {
+      const data = await fetchJson(
+        LOOKUP_API_URL + '?q=' + encodeURIComponent(q) + '&page=1&per_page=30',
+        { headers: hdrs({ 'Referer': 'https://movieshunt.monster/search.html?q=' + encodeURIComponent(q) }) }
+      );
+      const hits = (data && data.ok !== false && Array.isArray(data.hits)) ? data.hits : [];
+      hits.forEach(h => {
+        const title = String(h && h.post_title || '').trim();
+        let url = String(h && h.permalink || '');
+        if (!title || title.length <= 5 || !url) return;
+        if (!url.startsWith('http')) url = 'https://movieshunt.monster' + (url.startsWith('/') ? '' : '/') + url;
+        results.push({ title, url });
+      });
+      if (results.length) break;
+    } catch (e) { }
+  }
+  return results;
+}
+
 async function searchSite(query) {
+  // v1.2 addon fix: prefer the JSON lookup API (client-rendered search page
+  // made the HTML lane blind), keep the original HTML lane as fallback.
+  try {
+    const apiResults = await lookupApiSearch(query);
+    if (apiResults.length) return apiResults;
+  } catch (e) { }
   const queries = [query.replace(/'/g, '').trim()];
   const cleaned = query.replace(/[^a-zA-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
   if (cleaned !== queries[0]) queries.push(cleaned);
@@ -238,7 +277,8 @@ function extractQualityOptions(html) {
     const size = match[2];
     if (quality === '480P') continue;
     const context = html.substring(Math.max(0, match.index - 200), match.index + 600);
-    const hubcloudMatch = context.match(/href="(https:\/\/hubcloud\.cx\/(?:drive|video)\/[^"]+)"/i);
+    // v1.2 addon fix: hubcloud rotates domains (cx -> ist -> ...) - accept any TLD
+    const hubcloudMatch = context.match(/href="(https:\/\/hubcloud\.[a-z]{2,4}\/(?:drive|video)\/[^"]+)"/i);
     const vcloudMatch = context.match(/href="(https:\/\/href\.li\/\?https:\/\/vcloud\.zip\/[^"]+)"/i);
     if (hubcloudMatch) options.push({ quality, size, type: 'hubcloud', url: hubcloudMatch[1] });
     else if (vcloudMatch) options.push({ quality, size, type: 'vcloud', url: vcloudMatch[1] });

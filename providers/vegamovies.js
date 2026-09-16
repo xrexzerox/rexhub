@@ -326,7 +326,11 @@ async function fetchSafe(url, opts = {}, timeout = 12000) {
   } catch (e) { return null; }
 }
 const fetchJson = async (url, opts = {}) => { try { const r = await fetchSafe(url, opts); if (!r || !r.ok) return null; return JSON.parse(await r.text()); } catch (e) { return null; } };
-const fetchHtml = async (url, opts = {}) => { try { const r = await fetchSafe(url, opts); if (!r || !r.ok) return null; return cheerio.load(await r.text()); } catch (e) { return null; } };
+// v1.2 addon fix: the embedded nv cheerio-lite strips <script> bodies before
+// parsing, but extractSingleVc needs the RAW script-side bridge
+// (var url = atob(atob('...')) on vcloud/hubcloud pages). Keep the original
+// source on the $ handle so regex extraction sees what the network saw.
+const fetchHtml = async (url, opts = {}) => { try { const r = await fetchSafe(url, opts); if (!r || !r.ok) return null; const text = await r.text(); const $ = cheerio.load(text); $.nvRaw = text; return $; } catch (e) { return null; } };
 
 function makeStream(_, title, url, quality, headers, mediaInfo, fallbackQ = 'HD') {
   if (!url || !url.startsWith('https://')) return null;
@@ -476,7 +480,7 @@ async function extractSingleVc(vcUrl, referer, targetSeason, targetEp, label, fa
   const $ = await fetchHtml(newUrl, { headers: { ...mobileHdrs(), 'Referer': referer || BASE_URL + '/', 'Cookie': 'xla=s4t' }, redirect: 'manual' });
   if (!$) return streams;
 
-  const raw = $.html(), pageTitle = $('title').text() || '';
+  const raw = $.nvRaw || $.html(), pageTitle = $('title').text() || '';
   if (targetSeason != null || targetEp != null) {
     const sem = pageTitle.match(/[.\s_\-](?:S|Season)\s*0*(\d{1,2})[.\s_\-]*(?:E|Ep|Episode)\s*0*(\d{1,2})[.\s_\-]/i);
     if (sem) { if (targetSeason != null && parseInt(sem[1]) !== targetSeason) return streams; if (targetEp != null && parseInt(sem[2]) !== targetEp) return streams; }

@@ -29,7 +29,12 @@ services:
         value: "1800000"          # repeat requests answered instantly for 30min
       - key: MAX_ROWS
         value: "100"
-      - key: SKIP_PROVIDERS
-        value: "torrents,tagalogtorrents"
+      # v1.2: torrent lanes (torrents, tagalogtorrents) are ON by default.
+      # To go back to direct/HLS-only, re-add:
+      #   SKIP_PROVIDERS: "torrents,tagalogtorrents"
+      # Optional: feed providers their device-side settings as JSON, e.g.
+      # debrid keys (torrent lane -> instant cached http links) or showbox tokens:
+      # - key: SCRAPER_SETTINGS_JSON
+      #   sync: false   # paste e.g. {"debridProvider":"realdebrid","debridKey":"..."}
       - key: KEEP_WARM
         value: "true"             # self-ping /healthz every 14min (kills cold starts)
