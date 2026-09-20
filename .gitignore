@@ -1,3 +1,6 @@
-node_modules/
 *.log
 .env
+# NOTE (v1.5): node_modules/ is INTENTIONALLY committed - it carries the
+# vendored `undici` dependency (ProxyAgent used only by the optional
+# PROXY_URL egress; the relay path needs nothing). Do not add it back here,
+# or the Render deploy loses proxy support and the Docker build fails.

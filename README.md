@@ -5,6 +5,41 @@ Turns the whole **nv-plugins** scraper pack (42 sources - direct/HLS scrapers
 phone Nuvio) talks to one URL; a small Node service fans each stream request
 out to every scraper in parallel and merges all rows into one response.
 
+**v1.5 - all scrapers work like nv-plugin** (egress control):
+
+1. **Why some scrapers are empty here but work in the app:** the pack's
+   scrapers run ON YOUR PHONE, so upstreams see your home IP and answer.
+   The addon runs on Render, where a set of upstreams block datacenter IPs
+   (kisskh mirrors, xpass, vidrock, apibay/1337x, miruro, cinemacity,
+   moviebox API, ...). That is an IP-block, not a code bug - v1.5 lets the
+   addon's scraper requests LEAVE from a different IP, closing the last
+   structural gap between the addon and the on-device plugins.
+2. **RELAY_URL - the free fix (recommended):** deploy the bundled 2-minute
+   Cloudflare Worker relay (`addons/stream-relay/` - same deploy flow you
+   already used for asian-catalog) and set `RELAY_URL` (+ optional
+   `RELAY_KEY`) in Render's env. Scraper requests are then fetched from
+   Cloudflare's egress. If the relay is down, the addon automatically falls
+   back to a direct attempt - enabling it can never make things worse.
+3. **PROXY_URL - the paid fix:** route every scraper request through any
+   HTTP(S) proxy (`http://user:pass@host:port`), e.g. a residential proxy.
+   The vendored `undici` ProxyAgent keeps full streaming Response
+   transparency. Per-URL variants: add the addon as
+   `.../manifest.json?relay=<enc(url%7Ckey)>` or `?proxy=<enc(url)>` -
+   same idea as the debrid-key URL form; a relay/proxy variant gets its own
+   `eg-…` config tag and addon id, and the stream cache is shared between
+   direct and relay variants on purpose (same upstream, same rows).
+4. **Safety model unchanged:** no provider file is touched and no global
+   config is mutated - a request's egress rides the same per-request cfg as
+   the debrid fields (AsyncLocalStorage), so concurrent requests with
+   different configs cannot bleed. `api.themoviedb.org`, the addon's own
+   host (keep-warm) and the relay host always stay direct; upstream error
+   statuses (403/503/...) pass through untouched - the relay changes WHERE
+   a request leaves from, never WHAT a site answers. All logs redact
+   proxy/relay credentials.
+5. **Fail-soft hardened:** an exception after headers were sent can no
+   longer take the whole service down (v1.4-era crash class found in
+   testing); such requests now just end cleanly.
+
 **v1.4 - torrents that work** (fixes "torrents not working"):
 
 1. **Debrid key in the addon URL** - the biggest change. Add the addon in
@@ -127,9 +162,12 @@ NuvioTV ──▶ /stream/movie/tmdb:969681.json
 ```
 
 The scraper files in `providers/` are byte-for-byte the same JS the Nuvio app
-runs in its QuickJS runtime (pack 4.43.1, device-killer-hardened). Node 18+
-natively provides every global they use (`fetch`, `atob`, `URLSearchParams`,
-`TextDecoder`, timers), so they run here unmodified.
+runs in its QuickJS runtime (pack 4.44.0, device-killer-hardened; since
+1.2.0-1.4.0 the addon-side fixes for `vegamovies`, `movieshunt` and
+`torrents` were folded BACK into the pack, so both artifacts share identical
+provider code again). Node 18+ natively provides every global they use
+(`fetch`, `atob`, `URLSearchParams`, `TextDecoder`, timers), so they run here
+unmodified.
 
 ## Deploy on Render (free)
 
@@ -172,6 +210,8 @@ Remove + re-add the addon after redeploying the service with changes.
 | `MAX_ROWS` | `100` | Rows returned (deduped, provider order; torrents deduped by infoHash) |
 | `SKIP_PROVIDERS` | *(empty)* | v1.2: torrent lanes ON by default; set `torrents,tagalogtorrents` for direct/HLS-only |
 | `SCRAPER_SETTINGS_JSON` | *(empty)* | v1.2: provider settings as JSON (debrid provider/key for the torrent lane, showbox `uiTokens`, ...) |
+| `RELAY_URL` / `RELAY_KEY` | *(empty)* | v1.5: fetch scraper requests through your self-hosted Cloudflare relay (see `addons/stream-relay/`) - unblocks lanes that block Render's datacenter IP |
+| `PROXY_URL` | *(empty)* | v1.5: route every scraper request through an HTTP(S) proxy (`http://user:pass@host:port`) via the vendored undici ProxyAgent |
 | `KEEP_WARM` | `true` | Self-ping `/healthz` every 14 min on Render (needs `RENDER_EXTERNAL_URL`) |
 | `TMDB_API_KEY` | (bundled) | Used only to translate `tt…` IMDb ids to TMDB |
 | `TMDB_CACHE_TTL_MS` | `600000` | v1.1: coalesced TMDB metadata cache window (10 min) |
@@ -198,12 +238,15 @@ Remove + re-add the addon after redeploying the service with changes.
   quieter from Render than from your phone's ISP (kisskh mirrors, moviebox /
   aoneroom API, xpass embed, vidrock API, fibwatch, apibay/1337x for
   tagalogtorrents, miruro's own pipe, cinemacity). That's upstream bot
-  protection, not a bug. ctgmovies' host and cinejoy's API were down at the
-  v1.2 release; 4khdhub moved its download buttons behind an obfuscated
-  ad-redirector chain, so it currently only serves titles whose pages still
-  embed direct hubcloud links. Since then `api.speedracelight.com` (the shared
-  metadata API behind videasy/vidking/vidlove) went 502 and `vidrock.net`
-  started Cloudflare-challenging non-browser clients - both upstream-side.
+  protection, not a bug - and since **v1.5 it is fixable**: set `RELAY_URL`
+  (free Cloudflare relay, `addons/stream-relay/`) or `PROXY_URL` and those
+  lanes leave from a non-Render IP. ctgmovies' host and cinejoy's API were
+  down at the v1.2 release; 4khdhub moved its download buttons behind an
+  obfuscated ad-redirector chain, so it currently only serves titles whose
+  pages still embed direct hubcloud links. Since then
+  `api.speedracelight.com` (the shared metadata API behind
+  videasy/vidking/vidlove) went 502 and `vidrock.net` started
+  Cloudflare-challenging non-browser clients - both upstream-side.
 - **Logs:** every request logs per-scraper results -
   `[runner] pencuri: 2 rows in 2100ms`, `[runner] timeout kisskh >15000ms
   (rows dropped)` (only scrapers that genuinely hit the cap log this),
@@ -214,10 +257,12 @@ Remove + re-add the addon after redeploying the service with changes.
 ## Troubleshooting: "no streams / scrapers not showing"
 
 1. **Check the service is alive:** open `https://<your-service>.onrender.com/`
-   - it must show the status page with v1.4.0 and 42 scrapers loaded, no
-     load errors. If Render shows a failed deploy, push the unzipped folder
-     again (`git add -A` so `lib/device-globals.js` and
-     `providers/torrents.js` / `providers/tagalogtorrents.js` are included)
+   - it must show the status page with v1.5.0 and 42 scrapers loaded, no
+     load errors, and an `egress:` line (direct / relay / proxy). If Render
+     shows a failed deploy, push the unzipped folder
+     again (`git add -A` so `lib/device-globals.js`, `lib/egress.js`,
+     `node_modules/undici/` and `providers/torrents.js` /
+     `providers/tagalogtorrents.js` are included)
      and watch the deploy log end with `live`.
 2. **Open the title twice.** Since v1.3 an empty answer is only remembered
    for 90 seconds; since v1.4 an answer missing its torrent rows is
@@ -244,6 +289,12 @@ Remove + re-add the addon after redeploying the service with changes.
    rows (lane empty)`). Several upstreams are simply down or bot-walled
    for datacenter IPs (see Notes & limits); that changes week to week
    without any addon change.
+6. **"Works in the Nuvio app, empty in the addon" = IP block → v1.5 egress.**
+   Deploy the relay (`addons/stream-relay/README.md`, 2 minutes) and set
+   `RELAY_URL` in Render's env, or set `PROXY_URL`. Watch the status page's
+   egress line flip from `direct` to `relay`/`proxy`, then re-open the dead
+   title. Relay failures log as `[egress] relay … - direct fallback`, so a
+   misconfigured relay degrades to today's behavior, never to zero.
 
 ## Local run
 

@@ -14,12 +14,18 @@
 
 const http = require("http");
 const { loadProviders, getStreamsCached, stats, imdbToTmdb } = require("./lib/runner");
+const egress = require("./lib/egress");
 
 const PORT = parseInt(process.env.PORT || "10000", 10);
 const ADDON_ID = process.env.ADDON_ID || "community.nvio.all";
-const VERSION = process.env.ADDON_VERSION || "1.4.0";
+const VERSION = process.env.ADDON_VERSION || "1.5.0";
 const ADDON_NAME = process.env.ADDON_NAME || "NVio All Streams";
 const HOST = process.env.RENDER_EXTERNAL_URL || ""; // Render injects this
+
+// v1.5: egress (relay/proxy) is installed around the runner's fetch BEFORE the
+// server starts accepting requests. With no RELAY_URL/PROXY_URL env and no
+// per-URL config it is a transparent passthrough.
+egress.installEgressFetch([HOST, "http://localhost:" + PORT]);
 
 // v1.4: debrid credentials can ride on the ADDON URL itself, Torrentio-style:
 //   https://host.onrender.com/realdebrid=KEY/manifest.json      (path prefix)
@@ -56,11 +62,7 @@ function parseDebridConfig(searchParams, rawPathname) {
 }
 
 function configTag(cfg) {
-  if (!cfg) return "plain";
-  let h = 0;
-  const s = cfg.provider + ":" + cfg.key;
-  for (let i = 0; i < s.length; i++) h = ((h * 31 + s.charCodeAt(i)) >>> 0);
-  return cfg.provider + "-" + h.toString(36).slice(0, 6);
+  return egress.computeConfigTag(cfg);
 }
 
 loadProviders();
@@ -78,19 +80,22 @@ function json(res, code, obj, extraHeaders) {
 
 function manifest(cfg) {
   const tag = configTag(cfg);
-  const isCfg = !!cfg;
+  const hasDebrid = !!(cfg && cfg.provider);
+  const hasEgress = !!(cfg && cfg.egress);
   return {
-    id: isCfg ? ADDON_ID + "+" + tag : ADDON_ID,
+    id: (hasDebrid || hasEgress) ? ADDON_ID + "+" + tag : ADDON_ID,
     version: VERSION,
-    name: isCfg ? ADDON_NAME + " (" + cfg.provider + ")" : ADDON_NAME,
+    name: hasDebrid ? ADDON_NAME + " (" + cfg.provider + ")"
+      : hasEgress ? ADDON_NAME + " (egress)" : ADDON_NAME,
     description:
       `One addon, every scraper: merges direct streams from ${stats().loaded} ` +
       `nv-plugins sources (KissKH, Pencuri, VidFast, 4KHDHub, VidKing, NetMirror, ` +
       `AsianHub, PinoyMoviesHub and more) plus torrent lanes (Torrentio + ` +
       `TorrentsDB + TagalogTorrents) served as magnets/infoHashes that Nuvio ` +
       `resolves with debrid or its P2P engine.` +
-      (isCfg ? ` Debrid active: ${cfg.provider} (via addon URL).` :
-        ` Add debrid instantly: append ?debrid=realdebrid&key=YOURKEY to this URL.`),
+      (hasDebrid ? ` Debrid active: ${cfg.provider} (via addon URL).` : "") +
+      (hasEgress ? ` Egress active (${cfg.egress.proxyUrl ? "proxy" : "relay"}) - scrapers leave from a non-Render IP.` : "") +
+      (!hasDebrid ? ` Add debrid instantly: append ?debrid=realdebrid&key=YOURKEY to this URL.` : ""),
     logo: "https://raw.githubusercontent.com/" + "nv-plugins/main/README.md", // harmless if 404s
     resources: ["stream"],
     types: ["movie", "series"],
@@ -138,6 +143,8 @@ function statusPage(res, cfg) {
   const rows = st.ids
     .map((id) => `<code>${id}</code>`)
     .join(" · ");
+  const egSt = egress.egressStats();
+  const egDefault = egSt.request;
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
   res.end(`<!doctype html><html><head><title>${ADDON_NAME}</title></head>
 <body style="font-family:sans-serif;max-width:760px;margin:40px auto;color:#222">
@@ -145,11 +152,15 @@ function statusPage(res, cfg) {
 <p>Addon URL for Nuvio / NuvioTV:<br><b>${HOST || "http://localhost:" + PORT}/manifest.json</b></p>
 <p><b>${st.loaded}</b> scrapers loaded · uptime ${st.uptimeSec}s · stream cache: ${st.cacheEntries} entries (TTL ${st.cacheTtlSec}s, empty entries ${st.zeroRowTtlSec}s) · tmdb cache: ${st.tmdbCacheEntries} entries</p>
 <p style="color:#888">torrent lanes: ON (magnet/infoHash rows)${st.skipped.length ? " · skipped: " + st.skipped.join(", ") : ""}</p>
+<p style="color:#888">egress: default ${egDefault.mode}${egDefault.target ? " → " + egDefault.target : ""}${egDefault.keyed ? " (keyed)" : ""} · this request: ${egress.describeEgress(cfg && cfg.egress).mode}${egSt.undiciAvailable ? "" : " · undici absent: proxy disabled"}</p>
 <p style="color:#060"><b>Want torrent links that just PLAY?</b> Add the addon with your debrid key in the URL (Torrentio-style):<br>
 <code>${HOST || "http://localhost:" + PORT}/realdebrid=YOURKEY/manifest.json</code><br>
 or <code>${HOST || "http://localhost:" + PORT}/manifest.json?debrid=realdebrid&key=YOURKEY</code><br>
 Supported: realdebrid, alldebrid, premiumize, debridlink, easydebrid, offcloud, torbox, putio, seedr, pikpak. Without a key, torrent rows are magnets and need Nuvio's debrid/P2P on the device.</p>
-<p>current config: <code>${tag}</code>${cfg ? " (" + cfg.provider + ")" : ""}</p>
+<p style="color:#060"><b>Scraper works in the Nuvio app but empty here?</b> That site blocks Render's datacenter IP. Give the addon a different egress:<br>
+· deploy the 2-minute Cloudflare relay (README → addons/stream-relay) and set <code>RELAY_URL</code> in Render's env, or add the addon as <code>.../manifest.json?relay=https%3A%2F%2Fyour-worker.workers.dev%7CRELAYKEY</code><br>
+· or set <code>PROXY_URL=http://user:pass@host:port</code> in Render's env (or <code>?proxy=...</code>).</p>
+<p>current config: <code>${tag}</code>${cfg && cfg.provider ? " (" + cfg.provider + ")" : ""}${cfg && cfg.egress ? " (egress)" : ""}</p>
 <p>${rows}</p>
 ${st.loadErrors.length ? "<p style='color:#b00'>load errors: " + st.loadErrors.join("; ") + "</p>" : ""}
 </body></html>`);
@@ -161,8 +172,11 @@ const server = http.createServer(async (req, res) => {
   // v1.4: a config-shaped first path segment (/realdebrid=KEY/...) is ALWAYS
   // stripped before routing - an unknown provider name degrades to the plain
   // addon (the status page lists the supported ones) instead of a dead URL.
+  // v1.5: the same segment can also be /relay=.../ or /proxy=.../ (egress).
   const prefixMatch = url.pathname.match(/^\/([a-z0-9_]+)=([^/]+)\//i);
-  const cfg = parseDebridConfig(url.searchParams, url.pathname);
+  const debridCfg = parseDebridConfig(url.searchParams, url.pathname);
+  const egressCfg = egress.parseEgressConfig(url.searchParams, url.pathname);
+  const cfg = egress.mergeConfigs(debridCfg, egressCfg);
   let p = url.pathname;
   if (prefixMatch) p = p.replace(/^\/([a-z0-9_]+)=([^/]+)\//i, "/");
   p = decodeURIComponent(p);
@@ -196,8 +210,21 @@ const server = http.createServer(async (req, res) => {
     return json(res, 404, { error: "unknown route", path: p });
   } catch (e) {
     console.error(`[server] ${p} failed: ${e && e.stack}`);
-    // fail-soft: the addon protocol prefers an empty stream list over an error
-    return json(res, 200, { streams: [] });
+    // fail-soft: the addon protocol prefers an empty stream list over an
+    // error. If the handler already sent headers (a late template throw),
+    // just close the body - never let the error path itself crash the
+    // process (v1.5: an ERR_HTTP_HEADERS_SENT here took the whole server
+    // down with it).
+    try {
+      if (res.headersSent) {
+        try { res.end(); } catch (_) { /* socket already gone */ }
+      } else {
+        return json(res, 200, { streams: [] });
+      }
+    } catch (e2) {
+      console.error(`[server] fail-soft path also failed: ${e2 && e2.message}`);
+    }
+    return;
   }
 });
 

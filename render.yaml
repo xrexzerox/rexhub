@@ -40,5 +40,15 @@ services:
       # debrid keys (torrent lane -> instant cached http links) or showbox tokens:
       # - key: SCRAPER_SETTINGS_JSON
       #   sync: false   # paste e.g. {"debridProvider":"realdebrid","debridKey":"..."}
+      # v1.5: egress control - "scraper works in the Nuvio app but empty here"
+      # = the site blocks Render's datacenter IP. Either self-host the free
+      # Cloudflare relay (README -> addons/stream-relay) ...
+      - key: RELAY_URL
+        value: ""                # e.g. https://nvio-relay.your-subdomain.workers.dev
+      - key: RELAY_KEY
+        value: ""                # only if the worker has RELAY_KEY set
+      # ... or route every scraper request through an HTTP(S) proxy:
+      - key: PROXY_URL
+        value: ""                # e.g. http://user:pass@proxyhost:port
       - key: KEEP_WARM
         value: "true"             # self-ping /healthz every 14min (kills cold starts)

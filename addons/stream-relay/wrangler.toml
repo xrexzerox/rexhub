@@ -1,0 +1,10 @@
+name = "nvio-stream-relay"
+main = "worker.js"
+compatibility_date = "2024-09-01"
+
+# Optional shared secret (recommended - keeps strangers off your relay):
+#   wrangler secret put RELAY_KEY
+# and set the same value as RELAY_KEY in the addon's Render env (or append
+# %7C<key> to the ?relay= value in the addon URL).
+# [vars]
+# RELAY_KEY = "set-me-via-wrangler-secret-or-dash"
