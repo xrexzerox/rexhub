@@ -26,9 +26,10 @@
 
 const TMDB_API_KEY = '439c478a771f35c05022f9feabcca01c';
 
+// v1.4: base URLs can be overridden (mirror / testing). Defaults unchanged.
 const SOURCES = [
-  { name: 'Torrentio', api: 'https://torrentio.strem.fun', debrid: true },
-  { name: 'TorrentsDB', api: 'https://torrentsdb.com/eyJsaW1pdCI6IjUiLCJkZWJyaWRvcHRpb25zIjpbIm5vZG93bmxvYWRsaW5rcyJdfQ==', debrid: false }
+  { name: 'Torrentio', api: (typeof process !== 'undefined' && process.env && process.env.TORRENTIO_API_BASE) || 'https://torrentio.strem.fun', debrid: true },
+  { name: 'TorrentsDB', api: (typeof process !== 'undefined' && process.env && process.env.TORRENTSDB_API_BASE) || 'https://torrentsdb.com/eyJsaW1pdCI6IjUiLCJkZWJyaWRvcHRpb25zIjpbIm5vZG93bmxvYWRsaW5rcyJdfQ==', debrid: false }
 ];
 
 const HEADERS = {
@@ -45,9 +46,29 @@ const DEFAULT_TRACKERS = [
 
 const MIN_SEEDERS = 5;   // user rule: "dont include 0 seeders minimum is 5 seeders"
 const ALLOWED_QUALITY = { '720p': true, '1080p': true }; // user rule 4.32.0: "720/1080p only"
-const FETCH_TIMEOUT = 6000;
+const FETCH_TIMEOUT = 8000; // v1.4: was 6000 - torrentio can be slow under load
 
-function getDebridSettings() {
+function sleep(ms) {
+  return new Promise((res) => {
+    if (typeof setTimeout !== 'function') return res();
+    const t = setTimeout(res, ms);
+    if (t && typeof t.unref === 'function') t.unref();
+  });
+}
+
+function getDebridSettings(cfg) {
+  // v1.4: an explicit per-request config (5th getStreams argument, parsed
+  // from the addon URL by server.js) wins over the device globals. This
+  // keeps concurrent requests with different keys from bleeding into each
+  // other without touching any global state.
+  try {
+    if (cfg && cfg.provider && cfg.key) {
+      return {
+        provider: String(cfg.provider).toLowerCase().trim(),
+        key: String(cfg.key).trim()
+      };
+    }
+  } catch (e) {}
   let provider = 'none';
   let key = '';
   try {
@@ -66,8 +87,8 @@ function getDebridSettings() {
   return { provider, key };
 }
 
-function getDebridPathSegment() {
-  const { provider, key } = getDebridSettings();
+function getDebridPathSegment(cfg) {
+  const { provider, key } = getDebridSettings(cfg);
   if (!provider || provider === 'none' || !key) return '';
   return provider + '=' + key;
 }
@@ -210,7 +231,7 @@ function parseBackendRows(sourceName, data, isTV, title, year, season, episode) 
 }
 
 async function fetchBackend(source, isTV, imdbId, season, episode) {
-  const debridSegment = source.debrid ? getDebridPathSegment() : '';
+  const debridSegment = source.debrid ? getDebridPathSegment(source.__cfg) : '';
   const prefix = debridSegment ? debridSegment + '/' : '';
   const streamId = isTV
     ? 'series/' + imdbId + ':' + (season || 1) + ':' + (episode || 1)
@@ -218,14 +239,31 @@ async function fetchBackend(source, isTV, imdbId, season, episode) {
   const url = source.api + '/' + prefix + 'stream/' + streamId + '.json';
   try {
     const r = await withTimeout(fetch(url, { headers: HEADERS }), FETCH_TIMEOUT);
-    if (!r || !r.ok) return null;
+    if (!r || !r.ok) {
+      // v1.4: make upstream failures VISIBLE in the logs - a silent null here
+      // is how "torrents not working" used to look like a mystery.
+      console.error('[Torrents] ' + source.name + (prefix ? ' (debrid)' : '') + ' HTTP ' + (r ? r.status : 'no-response'));
+      return null;
+    }
     return await withTimeout(r.json(), 2000);
   } catch (e) {
+    console.error('[Torrents] ' + source.name + (prefix ? ' (debrid)' : '') + ' fetch failed: ' + (e && e.message));
     return null;
   }
 }
 
-async function getStreams(tmdbId, type = 'movie', season = null, episode = null) {
+// v1.4: one retry per backend. Torrentio intermittently answers 429/5xx or
+// drops connections under load; a single retry ~700ms later recovers most
+// of those windows without meaningfully slowing the lane (the runner cap
+// and the post-filter cap below still bound the worst case).
+async function fetchBackendRetry(source, isTV, imdbId, season, episode) {
+  const first = await fetchBackend(source, isTV, imdbId, season, episode);
+  if (first) return first;
+  await sleep(700);
+  return fetchBackend(source, isTV, imdbId, season, episode);
+}
+
+async function getStreams(tmdbId, type = 'movie', season = null, episode = null, cfg = null) {
   const isTV = type === 'tv' || type === 'series';
 
   // tt-ids (addon catalog rows) resolve through the /find endpoint
@@ -236,18 +274,60 @@ async function getStreams(tmdbId, type = 'movie', season = null, episode = null)
       '?api_key=' + TMDB_API_KEY + '&append_to_response=external_ids';
 
   try {
-    const tmdbData = await withTimeout(fetch(tmdbUrl).then(r => r.ok ? r.json() : null).catch(() => null), 5000);
+    // v1.4: the TMDB lookup can come back null (coalescing shim cold burst,
+    // momentary TMDB throttle). Retry ONCE after a short pause - the retry
+    // usually hits the shim cache that the other ~35 providers have warmed
+    // by then. Without this, the lane silently queried torrentio with the
+    // numeric tmdb id as imdb id and returned 0 rows.
+    let tmdbData = await withTimeout(fetch(tmdbUrl).then(r => r.ok ? r.json() : null).catch(() => null), 5000);
+    if (!tmdbData) {
+      await sleep(1200);
+      tmdbData = await withTimeout(fetch(tmdbUrl).then(r => r.ok ? r.json() : null).catch(() => null), 5000);
+    }
     const hit = isTT
       ? (tmdbData?.tv_results?.[0] || tmdbData?.movie_results?.[0] || null)
       : tmdbData;
-    const imdbId = isTT ? tmdbId : (tmdbData?.external_ids?.imdb_id || tmdbData?.imdb_id || tmdbId);
-    if (!imdbId) return [];
+    // v1.4: NEVER fall back to the numeric tmdb id as an imdb id - that
+    // garbage query silently poisoned the lane with 0 rows. tt-ids go
+    // straight to torrentio (it accepts them natively); for tmdb ids a
+    // failed lookup means: skip this round (the runner's short-TTL cache
+    // path makes the next open retry).
+    let imdbId;
+    if (isTT) {
+      imdbId = tmdbId;
+    } else {
+      const found = tmdbData?.external_ids?.imdb_id || tmdbData?.imdb_id;
+      if (!found) {
+        console.error('[Torrents] no imdb id for tmdb ' + tmdbId + ' (tmdb lookup failed) - skipping torrent search this round');
+        return [];
+      }
+      imdbId = found;
+    }
     const title = hit?.title || hit?.name || '';
     const year = (hit?.release_date || hit?.first_air_date || '').split('-')[0] || '';
 
-    // both backends in parallel, each fail-soft with its own timeout
+    const debridSegment = getDebridPathSegment(cfg);
+    const hasDebrid = !!debridSegment;
+
+    // both backends in parallel, each fail-soft with its own timeout + retry
     const results = await Promise.all(SOURCES.map(src =>
-      fetchBackend(src, isTV, imdbId, season, episode).catch(() => null)));
+      fetchBackendRetry(Object.assign({}, src, src.debrid ? { __cfg: cfg } : {}), isTV, imdbId, season, episode).catch(() => null)));
+
+    // v1.4: debrid fallback. If the debrid-prefixed Torrentio route failed
+    // OR came back empty (nothing cached in the debrid cloud for this
+    // title, or an invalid/expired key), fetch the PLAIN route too so the
+    // user still gets magnet rows instead of a silent hole in the lane.
+    if (hasDebrid && SOURCES[0].debrid) {
+      const rows0 = results[0]
+        ? parseBackendRows(SOURCES[0].name, results[0], isTV, title, year, season, episode)
+        : [];
+      if (!rows0.length) {
+        console.log('[Torrents] debrid route empty/failed - fetching plain Torrentio magnets as fallback');
+        const plain = await fetchBackendRetry(Object.assign({}, SOURCES[0], { debrid: false }), isTV, imdbId, season, episode).catch(() => null);
+        if (plain) results[0] = plain;
+      }
+    }
+
     const merged = [];
     const seen = {};
     results.forEach((data, i) => {
@@ -497,9 +577,11 @@ module.exports = { getStreams, onSettings };
         var r = __orig.apply(self, args);
         if (r && typeof r.then === "function") {
           if (typeof setTimeout === "function") {
-            // nv best-settings 4.23.0: hard 8s cap on the whole provider run
+            // v1.4: hard cap on the whole provider run raised 8s -> 12s so the
+            // per-backend retry (fetch fails -> one retry after 700ms) fits;
+            // still inside the runner's PROVIDER_TIMEOUT_MS (15s on Render).
             r = Promise.race([r, new Promise(function (res) {
-              var dl = setTimeout(function () { res([]); }, 8000);
+              var dl = setTimeout(function () { res([]); }, 12000);
               if (dl && typeof dl.unref === "function") dl.unref();
             })]);
           }

@@ -5,6 +5,52 @@ Turns the whole **nv-plugins** scraper pack (42 sources - direct/HLS scrapers
 phone Nuvio) talks to one URL; a small Node service fans each stream request
 out to every scraper in parallel and merges all rows into one response.
 
+**v1.4 - torrents that work** (fixes "torrents not working"):
+
+1. **Debrid key in the addon URL** - the biggest change. Add the addon in
+   NuvioTV with your debrid key baked into the URL, Torrentio-style:
+   `https://<your-service>.onrender.com/realdebrid=YOURKEY/manifest.json`
+   or `https://<your-service>.onrender.com/manifest.json?debrid=realdebrid&key=YOURKEY`.
+   NuvioTV appends `/stream/...` to the manifest URL, so the key rides on
+   every request and the Torrentio lane answers with **instant cached http
+   links** - torrent rows that just play, no debrid setup inside the app,
+   no Render env vars. Supported providers: realdebrid, alldebrid,
+   premiumize, debridlink, easydebrid, offcloud, torbox, putio, seedr,
+   pikpak. Changed the key? Remove + re-add the addon (or just change the
+   URL) - requests are cached per config, so the old magnet variant stays
+   untouched. If both URL forms are present the query parameter wins.
+2. **Debrid fallback to magnets** - if the debrid-prefixed Torrentio route
+   fails or comes back empty (invalid/expired key, nothing cached in your
+   debrid cloud), the lane now also fetches the plain route so you still get
+   magnet rows instead of a silent hole.
+3. **The silent-0-rows bug is fixed** - under a cold TMDB burst the lane's
+   metadata lookup could lose its 5s race, and the lane then silently
+   queried Torrentio with the numeric TMDB id as an IMDb id: zero torrent
+   rows that stuck in the cache for 30 minutes. It now retries the lookup
+   once (the other scrapers have usually warmed the coalescing cache by
+   then), never invents an IMDb id, and any aggregate whose torrent lanes
+   came back empty is cached only 5 minutes (`TORRENT_MISS_TTL_MS`) and
+   re-scanned synchronously on the next open.
+4. **Upstream resilience + honest logs** - per-backend retry (one retry 700ms
+   after a failure), fetch timeout 6s → 8s, and failures are now LOGGED:
+   `[Torrents] Torrentio HTTP 429` / `fetch failed: ...` / `debrid route
+   empty/failed - fetching plain Torrentio magnets as fallback` / `[runner]
+   torrents: 0 rows (lane empty)`. No more silent failures to guess at.
+5. **Diagnosability** - every `/stream` response carries `X-Rows` and
+   `X-Torrent-Rows` headers (plus `X-Cache: <state>:<config>`), so one curl
+   tells you whether torrent rows are actually in the payload.
+6. Optional mirror/test knobs: `TORRENTIO_API_BASE`, `TORRENTSDB_API_BASE`
+   override the two torrent backends' base URLs.
+
+**v1.3 - empty-cache hardening** (fixes "scrapers not giving streams"):
+
+1. **Zero-row aggregates are cached only 90s** (`ZERO_ROW_TTL_MS`) instead
+   of the full 30 minutes, an expired empty entry is re-fanned-out
+   synchronously (never served stale), and a background refresh that lands
+   0 rows can no longer clobber a good entry. One bad fan-out (deploy
+   restart, cold TMDB, upstream flap) no longer poisons a title for half
+   an hour - exactly the reported "not giving streams that never recovers".
+
 **v1.2 - torrents + provider fixes** (fixes "providers doesn't show fetch"):
 
 1. **Torrent lanes ON** - `torrents` (Torrentio + TorrentsDB) and
@@ -62,9 +108,11 @@ out to every scraper in parallel and merges all rows into one response.
    so the free tier never idles (kills the ~50s cold start). Disable with
    `KEEP_WARM=false`.
 
-Every response also carries an `X-Cache` header: `miss` (fresh fan-out),
-`hit` (from cache), `stale` (served old, refreshing), `dedup` (shared
-fan-out), `badid`.
+Every response also carries an `X-Cache` header (`miss`/`hit`/`stale`/
+`dedup`/`badid`, suffixed with the active config tag), plus `X-Rows` and
+`X-Torrent-Rows` - e.g. `curl -sI
+'https://<service>.onrender.com/stream/movie/969681.json' | grep -i x-`
+instantly shows whether torrent rows are in the payload.
 
 ```
 NuvioTV ──▶ /stream/movie/tmdb:969681.json
@@ -118,6 +166,8 @@ Remove + re-add the addon after redeploying the service with changes.
 | `MID_MIN_MS` | `9000` | Second checkpoint: sparse titles answer here once ≥1 row exists |
 | `STREAM_CACHE_TTL_MS` | `1800000` | Cache freshness window for results with rows (30 min) |
 | `ZERO_ROW_TTL_MS` | `90000` | v1.3: empty results cached only 90s - the next open re-tries all scrapers instead of replaying the empty answer |
+| `TORRENT_MISS_TTL_MS` | `300000` | v1.4: an aggregate whose torrent lanes returned 0 rows is cached only 5 min and re-scanned synchronously on the next open |
+| `TORRENTIO_API_BASE` / `TORRENTSDB_API_BASE` | *(bundled)* | v1.4: override the torrent backends' base URLs (mirror / testing) |
 | `CACHE_MAX` | `300` | Max cached ids (oldest evicted) |
 | `MAX_ROWS` | `100` | Rows returned (deduped, provider order; torrents deduped by infoHash) |
 | `SKIP_PROVIDERS` | *(empty)* | v1.2: torrent lanes ON by default; set `torrents,tagalogtorrents` for direct/HLS-only |
@@ -164,29 +214,36 @@ Remove + re-add the addon after redeploying the service with changes.
 ## Troubleshooting: "no streams / scrapers not showing"
 
 1. **Check the service is alive:** open `https://<your-service>.onrender.com/`
-   - it must show the status page with v1.3.0 and 42 scrapers loaded, no
+   - it must show the status page with v1.4.0 and 42 scrapers loaded, no
      load errors. If Render shows a failed deploy, push the unzipped folder
-     again (`git add -A` so the new `lib/device-globals.js` and
+     again (`git add -A` so `lib/device-globals.js` and
      `providers/torrents.js` / `providers/tagalogtorrents.js` are included)
      and watch the deploy log end with `live`.
 2. **Open the title twice.** Since v1.3 an empty answer is only remembered
-   for 90 seconds; the second open re-runs every scraper. (v1.2 and earlier
-   remembered an empty answer for 30 minutes - one bad moment made a title
-   look permanently dead. That class is fixed.)
-3. **Torrent rows need a resolver on the device.** Rows with a magnet
-   link/infoHash are listed by NuvioTV only when one of these is true:
-   debrid is configured in Nuvio's settings, or the TV's P2P engine is
-   available (Tizen: P2P capable model/setting; webOS: companion service
-   installed and P2P enabled for the profile). Otherwise those rows are
-   hidden by the app and only direct http/HLS rows show. To get instant
-   http links for torrents instead, set
-   `SCRAPER_SETTINGS_JSON={"debridProvider":"realdebrid","debridKey":"..."}`
-   in Render's Environment (supported provider: the Torrentio lane).
-4. **Confirm which lanes are alive right now:** the addon logs one line per
-   scraper per request (`[runner] <id>: N rows in Xms`) - Render Dashboard
-   → Logs shows exactly which upstreams answer and which 403/timeout.
-   Several upstreams are simply down or bot-walled for datacenter IPs
-   (see Notes & limits); that changes week to week without any addon change.
+   for 90 seconds; since v1.4 an answer missing its torrent rows is
+   remembered for only 5 minutes AND the next open re-scans synchronously.
+3. **Torrent rows: the two-minute setup that makes them PLAY.** Without a
+   resolver, NuvioTV hides magnet/infoHash rows (nothing on the device can
+   fetch a torrent). The fix is one URL - add the addon as
+   `https://<your-service>.onrender.com/realdebrid=YOURKEY/manifest.json`
+   (Real-Debrid etc. - see the v1.4 list above). The torrent lane then
+   returns instant http links from your debrid cloud's cache. Alternatives:
+   configure debrid inside Nuvio's own settings (resolves magnets on the
+   device), or rely on the TV's P2P engine where available. No debrid
+   account? Magnet rows still appear for direct-capable clients - and the
+   debrid-less `SCRAPER_SETTINGS_JSON` route from v1.2 keeps working.
+4. **One-curl payload check:**
+   `curl -sI 'https://<service>/stream/movie/969681.json' | grep -i x-`
+   - `X-Torrent-Rows: 0` means the torrent lanes found nothing (upstream
+   rate-limit/blocked window - open the title again, and check the Render
+   logs for the now-explicit `[Torrents] ...` failure lines).
+5. **Confirm which lanes are alive right now:** the addon logs one line per
+   scraper per request (`[runner] <id>: N rows in Xms`), torrent backends
+   log their HTTP failures (`[Torrents] Torrentio HTTP 429`), and a
+   torrent lane that ends with zero rows says so (`[runner] torrents: 0
+   rows (lane empty)`). Several upstreams are simply down or bot-walled
+   for datacenter IPs (see Notes & limits); that changes week to week
+   without any addon change.
 
 ## Local run
 
