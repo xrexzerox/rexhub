@@ -27,6 +27,10 @@ services:
         value: "600000"           # v1.1: coalesced TMDB metadata cache (10 min)
       - key: STREAM_CACHE_TTL_MS
         value: "1800000"          # repeat requests answered instantly for 30min
+      - key: ZERO_ROW_TTL_MS
+        value: "90000"            # v1.3: empty results cached only 90s - one bad
+                                  # fan-out (deploy restart, upstream flap) can no
+                                  # longer keep a title empty for 30 minutes
       - key: MAX_ROWS
         value: "100"
       # v1.2: torrent lanes (torrents, tagalogtorrents) are ON by default.

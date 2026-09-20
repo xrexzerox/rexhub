@@ -116,7 +116,8 @@ Remove + re-add the addon after redeploying the service with changes.
 | `EARLY_ROWS` | `6` | Respond early once this many rows landed (`999` = old always-wait behavior) |
 | `EARLY_DONE_PROVIDERS` | `20` | Also respond early once this many scrapers finished with ≥1 row |
 | `MID_MIN_MS` | `9000` | Second checkpoint: sparse titles answer here once ≥1 row exists |
-| `STREAM_CACHE_TTL_MS` | `1800000` | Cache freshness window (30 min) |
+| `STREAM_CACHE_TTL_MS` | `1800000` | Cache freshness window for results with rows (30 min) |
+| `ZERO_ROW_TTL_MS` | `90000` | v1.3: empty results cached only 90s - the next open re-tries all scrapers instead of replaying the empty answer |
 | `CACHE_MAX` | `300` | Max cached ids (oldest evicted) |
 | `MAX_ROWS` | `100` | Rows returned (deduped, provider order; torrents deduped by infoHash) |
 | `SKIP_PROVIDERS` | *(empty)* | v1.2: torrent lanes ON by default; set `torrents,tagalogtorrents` for direct/HLS-only |
@@ -150,13 +151,42 @@ Remove + re-add the addon after redeploying the service with changes.
   protection, not a bug. ctgmovies' host and cinejoy's API were down at the
   v1.2 release; 4khdhub moved its download buttons behind an obfuscated
   ad-redirector chain, so it currently only serves titles whose pages still
-  embed direct hubcloud links.
+  embed direct hubcloud links. Since then `api.speedracelight.com` (the shared
+  metadata API behind videasy/vidking/vidlove) went 502 and `vidrock.net`
+  started Cloudflare-challenging non-browser clients - both upstream-side.
 - **Logs:** every request logs per-scraper results -
   `[runner] pencuri: 2 rows in 2100ms`, `[runner] timeout kisskh >15000ms
   (rows dropped)` (only scrapers that genuinely hit the cap log this),
   `[runner] FULL movie 123: 20 rows (respond had 8)` (late rows folded into
   the cache - re-open the title to get them) -
   making slow or dead sources obvious at a glance.
+
+## Troubleshooting: "no streams / scrapers not showing"
+
+1. **Check the service is alive:** open `https://<your-service>.onrender.com/`
+   - it must show the status page with v1.3.0 and 42 scrapers loaded, no
+     load errors. If Render shows a failed deploy, push the unzipped folder
+     again (`git add -A` so the new `lib/device-globals.js` and
+     `providers/torrents.js` / `providers/tagalogtorrents.js` are included)
+     and watch the deploy log end with `live`.
+2. **Open the title twice.** Since v1.3 an empty answer is only remembered
+   for 90 seconds; the second open re-runs every scraper. (v1.2 and earlier
+   remembered an empty answer for 30 minutes - one bad moment made a title
+   look permanently dead. That class is fixed.)
+3. **Torrent rows need a resolver on the device.** Rows with a magnet
+   link/infoHash are listed by NuvioTV only when one of these is true:
+   debrid is configured in Nuvio's settings, or the TV's P2P engine is
+   available (Tizen: P2P capable model/setting; webOS: companion service
+   installed and P2P enabled for the profile). Otherwise those rows are
+   hidden by the app and only direct http/HLS rows show. To get instant
+   http links for torrents instead, set
+   `SCRAPER_SETTINGS_JSON={"debridProvider":"realdebrid","debridKey":"..."}`
+   in Render's Environment (supported provider: the Torrentio lane).
+4. **Confirm which lanes are alive right now:** the addon logs one line per
+   scraper per request (`[runner] <id>: N rows in Xms`) - Render Dashboard
+   → Logs shows exactly which upstreams answer and which 403/timeout.
+   Several upstreams are simply down or bot-walled for datacenter IPs
+   (see Notes & limits); that changes week to week without any addon change.
 
 ## Local run
 
