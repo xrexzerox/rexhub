@@ -1,3 +1,12 @@
+/* v7.2.0 (pack 4.45.0): visible "v7.2" chip on row names (wings label +
+ * native rows) for stale-cache diagnosis; native-lane seed fetch retries
+ * once on ANY failure (fresh-seed 401/500 churn, same treatment the
+ * wings lane got in 7.1.0). No matching-lane or header changes.
+ * NOTE: api.speedracelight.com answers "No streams available" for titles
+ * the backend does not carry (e.g. Resident Evil 2026) - 0 rows there is
+ * correct fail-soft, not a bug; the site's own new player (cinesrc.st)
+ * is fingerprint-locked and cannot be replicated server-side.
+ */
 /* nv-plugins cineby.js v7.0.0 (pack 4.40.0 "all providers readable")
  * Full clean rebuild: every machine name replaced with semantic names.
  * Lanes: WINGS text lane (api.speedracelight.com / vidking) first, native
@@ -783,9 +792,18 @@ function getStreams(tmdbId, mediaType, season, episode) {
       return getCinebyApiHost().then(function (host) {
         var isTv = mediaType === "tv";
         var seedUrl = host + "/seed?mediaId=" + encodeURIComponent(id);
-        return __nvFetch(seedUrl, { headers: HEADERS, skipSizeCheck: true }).then(function (res) {
-          if (!res.ok) return [];
-          return res.json().catch(function () { return null; }).then(function (seedData) {
+        var nvSeedTry = function () {
+          return __nvFetch(seedUrl, { headers: HEADERS, skipSizeCheck: true }).then(function (res) {
+            if (!res.ok) throw new Error("seed http " + res.status);
+            return res.json().catch(function () { return null; }).then(function (sd) {
+              if (!sd || !sd.seed) throw new Error("no seed body");
+              return sd;
+            });
+          });
+        };
+        // v7.2.0: seed fetch retries once on ANY failure before the lane
+        // gives up (fresh-seed 401/500 churn ~50% measured in 7.1.0 probes).
+        return nvSeedTry().catch(function () { return nvSeedTry(); }).then(function (seedData) {
             if (!seedData || !seedData.seed) return [];
 
             var pairs = [
@@ -827,7 +845,7 @@ function getStreams(tmdbId, mediaType, season, episode) {
                       url: src.url,
                       quality: q,
                       title: "Cineby " + q,
-                      name: "Cineby",
+                      name: "Cineby v7.2",
                       size: "Variable",
                       headers: HEADERS,
                       subtitles: subtitles
@@ -838,7 +856,6 @@ function getStreams(tmdbId, mediaType, season, episode) {
                 }).catch(function () { return []; });
               }).catch(function () { return []; });
           });
-        }).catch(function () { return []; });
       });
     });
   }).catch(function (e) {
@@ -861,7 +878,7 @@ module.exports = { getStreams: getStreams };
    ========================================================================== */
 (function () {
   'use strict';
-  var __LABEL = 'Cineby';
+  var __LABEL = 'Cineby v7.2';
   var __WINGS_FIRST = true;
   var __ALT_NAME = '__nvWingsStreams';
   function __junk(u) { return /tungtungtungsahur\.cfd|\/api\?d=/i.test(String(u || '')); }

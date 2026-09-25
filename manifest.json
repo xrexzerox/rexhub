@@ -1,7 +1,7 @@
 {
   "name": "NV Plugins",
-  "version": "4.44.0",
-  "description": "nv-plugins 4.44.0: the ACCURACY + DEAD-DOMAIN pass, fixing the user's round of reports on the Resident Evil (2026, tmdb 1423191) test title. (1) cinejoy 3.1.0: the site moved (cinejoy.to 301 -> cinejoy.pk, api.shegu.st dead 502) - native chain re-pointed to api.wing.st/cinejoy.pk (protocol unchanged, live-verified from the site's own network trace: /info + imdb.wing.st enrichment + /servers + binary /g -> HLS), and the device (no-timer) shared-subtitles pass no longer runs uncapped after rows exist - dead sub hosts can no longer ride a call past the app's 60s kill and zero extracted rows. (2) WRONG-CONTENT fixes per 'purstream, topcartoons, anikoto, Re:ANIME provides inaccurate stream links': purstream 3.0.0 verifies candidates through TMDB title + year +-1 AND the site's own sheet tmdbId cross-reference (no verified candidate -> zero rows, never the wrong movie - previously the 2021 Raccoon City film played for the 2026 release); topcartoons 2.6.0 verifies the WP-search article heading against the requested title (live repro: 'Resident Evil' served 'Ben 10 - Permanent Retirement'); anikototv 9.1.0 raises the title-match gate 0.25 -> 0.6; reanime 1.3.0 requires anilist-id or exact-slug equality instead of accepting any word-overlap candidate. (3) cineby 7.1.0: rows carried dead-domain cineby.at referers while the stream CDN is referer-allowlisted (vidking.net 200 vs everything else 403, live-verified on fresh tokens) - headers re-pointed to vidking.net; post-filter tail upgraded to the pack-standard FAIL-OPEN quality gate. (4) moviebox 7.1.0: isAdStream filter drops promo/ad/sponsor/teaser assets mixed into the bff stream list ('only ads' report). (5) Fold-in: vegamovies 1.5.0 + movieshunt 7.1.0 + torrents 2.1.0 carry the addon-side fixes (raw-source vcloud bridge, movieshunt.monster JSON lookup lane, torrents env-base overrides + per-request debrid config + 8s lane timeout) restoring pack<->addon byte-identity. The accuracy philosophy: a title absent from (or mismatched with) a site's catalog now yields ZERO rows - never inaccurate ones. Standing exclusions unchanged: kisskh/asianhub/pinoyhub/tagalogtorrents untouched; cinemacity stays Tagalog/Filipino; netmirror verbatim soryn paste untouched; asian-catalog needs no redeploy. 42 providers.",
+  "version": "4.45.0",
+  "description": "42 scrapers. v4.45.0 accuracy round 2: IMDb-search verification gate (user directive - content absent from or mismatched against IMDb yields ZERO rows, never inaccurate ones) wired into purstream, topcartoons, anikototv and moviebox before their site searches; visible version chips on every row of the 7 reported providers (Cinejoy v3.2 / Cineby v7.2 / Purstream v3.1 / TopCartoons v2.7 / Anikoto v9.2 / MovieBox v7.2 / Re:ANIME v1.4) so a stale device cache is instantly diagnosable; cineby native seed retry + cinejoy TMDB/seed 429-retry hardening. All 7 chains re-verified live 2026-09-25 against Resident Evil (2026, tmdb 1423191, tt35538033): cinejoy 2+2 rows, purstream/topcartoons/anikoto/reanime 0 (gates hold), cineby 0 (upstream no longer carries the title - correct), Inception/JJK/Silo positives intact.",
   "author": "xrexzerox",
   "scrapers": [
     {
@@ -307,8 +307,8 @@
     {
       "id": "cineby",
       "name": "Cineby",
-      "description": "Cineby v7.1.0 PLAYBACK FIX ('just provide 2 streams and not working'): the native lane's headers (and thus every native-lane row) still pointed at www.cineby.at - a DEAD domain - while the stream CDN is referer-allowlisted; live-verified on a fresh token: vidking.net referer -> 200 HLS, cineby.at / cineby.rocks / no referer -> 403. Headers now ride vidking.net (proven accepted, same backend the WINGS lane already used). The post-filter tail also upgrades to the pack-standard FAIL-OPEN quality gate (4.26.0): probe result wins, else title-derived, else Auto - unknown rows are no longer silently dropped, another reason the sheet showed only 2 rows.",
-      "version": "7.1.0",
+      "description": "v7.2.0: visible 'Cineby v7.2' chip on wings + native rows; native-lane seed fetch retries once on ANY failure (fresh-seed 401/500 churn). Live check 2026-09-25: api.speedracelight.com seed 200, Inception payload decrypts; the backend no longer carries RE2026 ('No streams available' = correct 0), and the site's new cinesrc.st player is fingerprint-locked (not replicable server-side).",
+      "version": "7.2.0",
       "author": "Nuvio Team (AIO merge)",
       "supportedTypes": [
         "movie",
@@ -348,8 +348,8 @@
     {
       "id": "purstream",
       "name": "Purstream",
-      "description": "Purstream v3.0.0 WRONG-CONTENT FIX ('provides inaccurate stream links'): the picker took the FIRST type-matching search hit - for Resident Evil (2026, tmdb 1423191) the site's first movie hit is 'Bienvenue a Raccoon City' (2021), so the 2021 film played for the 2026 release. Now three-layer verification honoring the 'add condition using imdb/tmdb search' directive: L1 candidate title must match the TMDB title (normalized, either-direction containment), L2 release year within +-1 of TMDB when exposed, L3 DETERMINISTIC - the media sheet's own tmdbId cross-reference must equal the requested tmdbId or the candidate is rejected (next candidate tried; none verifies -> ZERO rows instead of wrong ones). All fetches capped (guarded race on timers-runtimes; app-budget bounded on device).",
-      "version": "3.0.0",
+      "description": "v3.1.0: IMDb-search verification (TMDB external_ids -> IMDb suggestion API with Cinemeta fallback; title+year must agree) runs before the site search - content not on IMDb or mismatched yields 0 rows; 'Purstream v3.1' chip on row names. Positive path re-verified (Inception 27205 -> sheet tmdbId match -> 1080p).",
+      "version": "3.1.0",
       "author": "Streamline",
       "supportedTypes": [
         "movie",
@@ -394,8 +394,8 @@
     {
       "id": "topcartoons",
       "name": "TopCartoons",
-      "description": "TopCartoons v2.6.0 WRONG-CONTENT FIX ('provides inaccurate stream links'): live repro had a search for 'Resident Evil' return 'Ben 10 - Permanent Retirement' because the picker grabbed the FIRST article on the WordPress results page (sidebar/recent post) with zero verification. The picker now reads each article's heading and accepts only a genuine title match against the TMDB title (normalized, every query word present, either-direction containment); no match -> [] - modern titles the classic-cartoon site does not carry now correctly return nothing instead of an unrelated cartoon that plays.",
-      "version": "2.6.0",
+      "description": "v2.7.0: IMDb-search verification gate before the WordPress search; 'TopCartoons v2.7' chip on row names. RE2026 still 0 rows (gate holds), no Ben-10-style false positives possible.",
+      "version": "2.7.0",
       "author": "xrexzerox",
       "supportedTypes": [
         "movie",
@@ -505,8 +505,8 @@
     {
       "id": "moviebox",
       "name": "MovieBox",
-      "description": "MovieBox v7.1.0 ad-row filter ('streams not working only ads'): an isAdStream gate drops promotional assets the bff mixes into the stream list (ad breaks, sponsor clips, teaser/trailer/sample/announcement paths) alongside the existing update-gate video filter. Title+year match scoring (>=40 with year bonus) was already strict and is unchanged. Note: api4.aoneroom.com blocks datacenter IPs entirely (403) - device/retail networks only.",
-      "version": "7.1.0",
+      "description": "v7.2.0: IMDb-search verification (details call's external_ids) before the title+year search; 'MovieBox v7.2' chip on rows; ad filter widened (adcreative/preroll/pre-roll//adv/ paths). api4.aoneroom.com remains device-only (403s datacenter IPs).",
+      "version": "7.2.0",
       "author": "xrexzerox",
       "supportedTypes": [
         "movie",
@@ -662,8 +662,8 @@
     {
       "id": "anikototv",
       "name": "AnikotoTV",
-      "description": "AnikotoTV v9.1.0 accuracy gate: the title-match acceptance threshold rises 0.25 -> 0.6 per the 'provides inaccurate stream links' report - at 0.25 word-overlap lookalikes passed (target 'Blue Box' vs candidate 'Blue Period' scores dice 0.5) and franchise-adjacent movies outranked the actual series. 0.6 still keeps exact titles, healthy prefix/containment matches and season-tagged candidates (+0.35 season bonus); junk pairs die below it. Lanes/decryption untouched (megaplay getSourcesNew AES-CBC flow re-verified live: enc blob -> master.m3u8).",
-      "version": "9.1.0",
+      "description": "v9.2.0: IMDb-search verification using the details call's own external_ids (no extra round-trip) before the anikoto search - absent/mismatched IMDb content yields 0 rows; 'Anikoto v9.2' chip on row names. JJK S1E1 positive path re-verified (4 rows).",
+      "version": "9.2.0",
       "author": "xrexzerox",
       "supportedTypes": [
         "movie",
@@ -707,8 +707,8 @@
     {
       "id": "cinejoy",
       "name": "Cinejoy",
-      "description": "Cinejoy from cinejoy.pk: v3.1.0 re-points the player API after the site moved - cinejoy.to now 301s to cinejoy.pk and the API host api.shegu.st died (502 on /servers), so the native chain was dead for everyone ('shows no streams even though the website has the title'). Both constants now target api.wing.st / cinejoy.pk - protocol unchanged (/servers + encrypted token + binary /g + dec; live-verified from the site's own network trace) so TV/PC/node resolve directly and Mobile resolves via the cjRelay worker. Also fixes a device subs hang: on the QuickJS realm (no timers) the shared-subtitles pass ran UNCAPPED after rows already existed and dead subtitle hosts could ride the call past the app's 60s kill, zeroing extracted rows - on device rows now return immediately (subs stay a timers-runtime bonus). WINGS + vidlove text lanes unchanged.",
-      "version": "3.1.0",
+      "description": "v3.2.0: visible 'Cinejoy v3.2' chip on every row (richName choke point + wings label) so stale device caches are diagnosable at a glance; wings TMDB-meta and seed fetches retry once on a null/failed body (shared-IP 429 hardening). Chain re-verified live 2026-09-25 on api.wing.st: /info -> /servers -> binary /g 200 -> ok.*.cc HLS, plus wings moon.quietridge rows with vidking referer.",
+      "version": "3.2.0",
       "author": "Streamline",
       "supportedTypes": [
         "movie",
@@ -805,8 +805,8 @@
     {
       "id": "reanime",
       "name": "Re:ANIME",
-      "description": "Re:ANIME v1.3.0 accuracy gate: queryReanimeIndex previously returned its top candidate REGARDLESS of score, so any anime sharing one word with the query (score 4-58) became 'the match' and flixcloud served wrong-show links. Accepted now only on anilist-id equality (1000) or exact normalized-slug equality (>=100); containment/word-overlap alone is never enough - wrong-show links are worse than no links. Flix server/extract lanes untouched.",
-      "version": "1.3.0",
+      "description": "v1.4.0: visible 'Re:ANIME v1.4' chip on row names for stale-cache diagnosis. Matching stays id-exact (anilist-id equality or exact slug), which already enforces the accuracy rule.",
+      "version": "1.4.0",
       "author": "xrexzerox",
       "supportedTypes": [
         "movie",

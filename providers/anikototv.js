@@ -3,6 +3,10 @@
 // Device fixes applied: verbatim (device-clean source).
 // Subtitles: passed through as upstream emits them (English/Tagalog tracks kept when upstream provides).
 
+// v9.2.0 (pack 4.45.0): IMDb-search verification gate (nvImdbVerify below)
+// before the anikoto search - absent/mismatched IMDb content yields 0 rows
+// per the user rule; visible "v9.2" chip on row names for stale-cache
+// diagnosis (the 4.44.0 report was reproduced as stale JS on device).
 const TMDB_API_URL = "https://api.themoviedb.org/3";
 const TMDB_API_KEY = "307b7b8ef035c6aa336900aef4e203bd";
 const BASE_URL = "https://anikoto.cz";
@@ -66,6 +70,76 @@ function dedupeStreamsByUrl(streams) {
   return streams.filter(s => s.url && !seen.has(s.url) && seen.add(s.url));
 }
 
+/* ===== nv IMDb-search verification v1.0.0 (pack 4.45.0) =====================
+   User directive: "it should not provide inaccurate streams if the movies or
+   series is not on imdb or tmdb or incorrect ... since we are only using tmdb
+   try add condition using imdb search." Runs BEFORE any site search:
+     1. The content must expose an IMDb id (TMDB external_ids). No id means the
+        title is not on IMDb, so title-based guessing can never be verified
+        -> 0 rows (fail-closed, per the user's rule).
+     2. IMDb is searched for that exact id (IMDb suggestion API first,
+        Cinemeta v3 fallback). Reachable but ABSENT -> 0 rows (same rule).
+     3. The IMDb entry's title + year must agree with TMDB (normalized
+        containment, year +-1). A mismatched mapping is exactly the
+        wrong-content class the user reported -> 0 rows.
+   If both IMDb sources are unreachable we cannot tell "absent" from
+   "offline", so verification degrades to this provider's own TMDB gates
+   instead of zeroing legitimate titles (documented fail-open on offline only).
+============================================================================ */
+async function nvImdbFetchJson(url) {
+  try {
+    const r = await fetch(url, { headers: HEADERS });
+    return r && r.ok ? await r.json() : null;
+  } catch { return null; }
+}
+
+function nvImdbNorm(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+async function nvImdbVerify(tmdbId, mediaType, tmdbTitle, tmdbYear, knownImdbId) {
+  try {
+    const kind = mediaType === 'tv' ? 'tv' : 'movie';
+    let imdbId = String(knownImdbId || '');
+    if (!imdbId) {
+      const ex = await nvImdbFetchJson(`https://api.themoviedb.org/3/${kind}/${encodeURIComponent(String(tmdbId))}/external_ids?api_key=${TMDB_API_KEY}`);
+      if (ex && ex.imdb_id) imdbId = String(ex.imdb_id);
+    }
+    if (!imdbId || imdbId.indexOf('tt') !== 0) return { ok: false, reason: 'not-on-imdb: no imdb id on TMDB' };
+    let imdbTitle = '';
+    let imdbYear = null;
+    let reachable = false;
+    const sg = await nvImdbFetchJson(`https://v2.sg.media-imdb.com/suggestion/t/${encodeURIComponent(imdbId)}.json`);
+    const d = sg && Array.isArray(sg.d) ? sg.d : [];
+    let hit = null;
+    for (const x of d) {
+      if (x && String(x.id || '').toLowerCase() === imdbId.toLowerCase()) { hit = x; break; }
+    }
+    if (!hit && d.length) hit = d[0];
+    if (hit && hit.l) {
+      reachable = true;
+      imdbTitle = String(hit.l);
+      imdbYear = parseInt(hit.y, 10) || parseInt(hit.tl, 10) || null;
+    }
+    if (!reachable) {
+      const cm = await nvImdbFetchJson(`https://v3-cinemeta.strem.io/meta/${mediaType === 'tv' ? 'series' : 'movie'}/${encodeURIComponent(imdbId)}.json`);
+      if (cm && cm.meta && cm.meta.name) {
+        reachable = true;
+        imdbTitle = String(cm.meta.name);
+        imdbYear = parseInt(cm.meta.releaseYear, 10) || parseInt(cm.meta.year, 10) || null;
+      }
+    }
+    if (!reachable) return { ok: true, imdbId, reason: 'imdb-unreachable: own gates apply' };
+    if (!imdbTitle) return { ok: false, reason: 'not-on-imdb: no entry for ' + imdbId };
+    const a = nvImdbNorm(imdbTitle);
+    const t = nvImdbNorm(tmdbTitle);
+    const titleOk = !!a && !!t && (a === t || a.includes(t) || t.includes(a));
+    const yearOk = !tmdbYear || !imdbYear || Math.abs(imdbYear - parseInt(tmdbYear, 10)) <= 1;
+    if (!titleOk || !yearOk) return { ok: false, reason: 'imdb-mismatch: imdb "' + imdbTitle + '" (' + imdbYear + ') vs tmdb "' + tmdbTitle + '" (' + tmdbYear + ')' };
+    return { ok: true, imdbId, imdbTitle, imdbYear };
+  } catch (e) {
+    return { ok: true, reason: 'verify-error: own gates apply' };
+  }
+}
 async function fetchTmdbMetadata(tmdbId, mediaType, targetSeason) {
   const endpoint = mediaType === "movie" ? "movie" : "tv";
   try {
@@ -98,6 +172,7 @@ async function fetchTmdbMetadata(tmdbId, mediaType, targetSeason) {
     return {
       numericId: String(tmdbId),
       kind: endpoint,
+      year: parseInt(String((endpoint === "movie" ? data.release_date : data.first_air_date) || "").substring(0, 4), 10) || null,
       title: decodeHtmlEntities(title || ""),
       originalTitle: origTitle ? decodeHtmlEntities(origTitle) : undefined,
       alternateTitles: altTitles,
@@ -344,7 +419,7 @@ async function extractStreamFromServer(server) {
 
     return {
       title: `Anikoto \u2022 ${langName} \u2022 ${server.serverName}`,
-      name: `Anikoto \u2022 ${langName} \u2022 ${server.serverName}`,
+      name: `Anikoto v9.2 \u2022 ${langName} \u2022 ${server.serverName}`,
       quality: "1080p",
       url: masterUrl,
       headers: {
@@ -500,6 +575,14 @@ async function getStreams(tmdbId, mediaType, season, episode) {
 
     const meta = await fetchTmdbMetadata(tmdbId, mediaType, targetSeason);
     if (!meta?.title) return [];
+
+    // v9.2.0: IMDb-search verification (user directive). anikoto's meta
+    // already carries external_ids.imdb_id - no extra TMDB round-trip.
+    const nvImdb = await nvImdbVerify(tmdbId, mediaType, meta.title, meta.year, meta.imdbId || "");
+    if (!nvImdb.ok) {
+      console.log(`[Anikoto] imdb verify failed (${nvImdb.reason}) for tmdb ${tmdbId} - 0 rows`);
+      return [];
+    }
 
     const searchQueries = [
       meta.title,

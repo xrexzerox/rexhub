@@ -1,3 +1,10 @@
+/* v3.2.0 (pack 4.45.0): visible "Cinejoy v3.2" chip on every emitted row
+ * (single richName choke point + wings label) for stale-cache diagnosis;
+ * wings TMDB meta + seed fetches retry once on a null/failed body (429/
+ * 5xx hardening - a shared-IP TMDB rate limit used to zero the lane).
+ * Chain re-verified live 2026-09-25: api.wing.st /info -> /servers ->
+ * binary /g 200 -> ok.*.cc master.m3u8 + wings moon.quietridge rows.
+ */
 /**
  * cinejoy - Built from src/cinejoy/ (run bun build.js to regenerate)
  *
@@ -550,12 +557,17 @@ function richTitle(provider, line1, meta, container) {
   return { text: lines.join("\n"), providerTag: provider + " | " + meta.quality };
 }
 function richName(provider, meta) {
+  // v3.2.0: visible version chip on every emitted row - lets the user
+  // verify the new build is actually live on device (stale-cache diagnosis).
+  const nvBrand = String(provider).indexOf('Cinejoy') === 0 ? 'Cinejoy v3.2' : String(provider);
+  const nvSrc = provider;
   const bits = [meta.quality];
   if (meta.audio)
     bits.push(meta.audio + (meta.atmos ? "+Atmos" : ""));
   else if (meta.lang)
     bits.push(meta.lang);
-  return provider + " | " + bits.join(" \u2022 ");
+  void nvSrc;
+  return nvBrand + " | " + bits.join(" \u2022 ");
 }
 function enrichStream(stream, raw, line1) {
   if (!stream || stream._rich)
@@ -1199,9 +1211,17 @@ function scrapeServerChain(srv, ctx, headers, type) {
     if (__wingsMetaCache[ck]) return Promise.resolve(__wingsMetaCache[ck]);
     var url = 'https://api.themoviedb.org/3/' + (mediaType === 'tv' ? 'tv' : 'movie') + '/' +
       parseInt(tmdbId, 10) + '?api_key=' + TMDB_KEY + '&append_to_response=external_ids';
+    var nvAttempt = function () {
+      return _fetchX(url, { headers: { 'User-Agent': WINGS_UA, 'Accept': 'application/json' } })
+        .then(function (r) { return r.ok ? r.json() : null; });
+    };
     return _race(
-      _fetchX(url, { headers: { 'User-Agent': WINGS_UA, 'Accept': 'application/json' } })
-        .then(function (r) { return r.ok ? r.json() : null; })
+      nvAttempt().then(function (j) {
+        /* v3.2.0: TMDB 429/5xx used to kill the whole wings lane on a shared
+         * IP - one in-place retry before giving up. */
+        if (j) return j;
+        return nvAttempt().catch(function () { return null; });
+      })
         .then(function (j) {
           if (!j) return null;
           return {
@@ -1256,8 +1276,12 @@ function scrapeServerChain(srv, ctx, headers, type) {
       return wingsTmdbMeta(tmdbId, mediaType).then(function (meta) {
         if (!meta || !meta.title) return [];
         if (__wingsSeedCache[tmdbId]) return Promise.resolve({ seed: __wingsSeedCache[tmdbId] });
-        return _fetchX(WINGS_BASE + '/seed?mediaId=' + tmdbId, { headers: WINGS_HEADERS })
-          .then(function (r) { return r.ok ? r.json() : null; })
+        var nvSeedGet = function () {
+          return _fetchX(WINGS_BASE + '/seed?mediaId=' + tmdbId, { headers: WINGS_HEADERS })
+            .then(function (r) { return r.ok ? r.json() : null; });
+        };
+        // v3.2.0: one retry on a failed seed fetch (fresh-seed churn).
+        return nvSeedGet().then(function (j0) { return j0 || nvSeedGet().catch(function () { return null; }); })
           .then(function (j) {
             if (!j || !j.seed) throw new Error('no seed');
             var seed = (__wingsSeedCache[tmdbId] = j.seed);
@@ -1419,7 +1443,7 @@ function cinejoyWingsOnce(ctx, server) {
     mediaType: ctx.isTv ? "tv" : "movie",
     season: ctx.season || 1,
     episode: ctx.episode || 1,
-    label: "Cinejoy",
+    label: "Cinejoy v3.2",
     timeoutMs: 9000,
     servers: [server]
   })).then(function (rows) { return rows || []; }).catch(function () { return []; });

@@ -147,6 +147,23 @@ runs in its QuickJS runtime (pack 4.43.1, device-killer-hardened). Node 18+
 natively provides every global they use (`fetch`, `atob`, `URLSearchParams`,
 `TextDecoder`, timers), so they run here unmodified.
 
+## v1.6.0 - TMDB/IMDb existence gate (accuracy)
+
+User report context: "still the same" on Resident Evil 2026 (tmdb 1423191) plus the standing directive: "it should not provide inaccurate streams if the movies or series is not on imdb or tmdb or incorrect - since we are only using tmdb try add condition using imdb search."
+
+### What changed
+- **Runner-level existence gate** (`lib/runner.js`, `metaGate`): before any scraper fans out, the requested id is verified once (cached for the process lifetime):
+  1. The id must exist on TMDB (404 -> zero rows, no fan-out at all).
+  2. TMDB must expose an IMDb id for it (no id = not on IMDb -> zero rows).
+  3. IMDb is searched for that exact id (IMDb suggestion API, Cinemeta fallback). Reachable but absent -> zero rows. Title/year must agree with TMDB (normalized containment, year +-1) - a mismatched mapping (the wrong-content class) -> zero rows.
+  4. IMDb unreachable (offline) is NOT treated as absent - the fan-out proceeds and the gate logs `imdb-unreachable`; the accuracy-critical title-search providers (purstream, topcartoons, anikototv, moviebox) enforce the same check in-pack with their own fail-closed policy.
+  Watch for `[runner] meta gate movie:1423191: PASS (imdb-verified: tt35538033 "Resident Evil"(2026))` in the Render logs.
+- **Provider pack 4.45.0 folded in**: cinejoy 3.2.0, cineby 7.2.0, purstream 3.1.0, topcartoons 2.7.0, anikototv 9.2.0, reanime 1.4.0, moviebox 7.2.0 - all with visible version chips on their stream rows (e.g. "Cineby v7.2"), so a stale device cache is diagnosable at a glance.
+- cineby native seed fetch retries once on any failure; cinejoy wings TMDB/seed fetches retry once on 429/5xx.
+- Live verification 2026-09-25: RE2026 -> cinejoy 2+2 rows (correct title), purstream/topcartoons/anikoto/reanime 0 rows (gates hold - the title is not in their catalogs), cineby 0 rows (its backend answers "No streams available" for this title - correct), Inception/JJK/Silo positives intact, and a tmdb id with no IMDb entry (1552001) returns zero rows in ~0.5s from the gate alone.
+- Absent content now fails in ~0.5s instead of a full 15s dead fan-out - faster AND more accurate.
+
+
 ## Deploy on Render (free)
 
 **Option A - Blueprint (recommended):** push this folder to a GitHub repo,

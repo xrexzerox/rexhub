@@ -360,7 +360,7 @@ async function getStreams(tmdbId, mediaType, season, episode) {
                 if (seenUrls[dedupeKey]) continue;
                 seenUrls[dedupeKey] = true;
                 streams.push({
-                    name: "Re:ANIME \u2022 " + job.serverTag,
+                    name: "Re:ANIME v1.4 \u2022 " + job.serverTag,
                     title: "Re:ANIME \u2022 " + job.serverTag,
                     url: data.url,
                     quality: "1080p \u2022 MKV",
