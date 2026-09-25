@@ -39,6 +39,20 @@
  /**
  * cinejoy - Built from src/cinejoy/ (run bun build.js to regenerate)
  *
+ * v3.1.0 (pack 4.44.0, 2026-09-25):
+ *  User report: cinejoy shows no streams while cinejoy.pk plays the title
+ *  in-browser. Two fixes:
+ *    - the player API domain rotated: api.shegu.st /servers answered 502 and
+ *      cinejoy.to 301s to cinejoy.pk - both constants re-pointed to
+ *      api.wing.st / cinejoy.pk (protocol unchanged: /servers + enc token +
+ *      binary POST /g + dec; live-verified from the site's own network trace),
+ *      so the native lane works again on TV/PC/node and via cjRelay on Mobile;
+ *    - device subs hang: on the QuickJS realm (no timers) withSharedSubs ran
+ *      UNCAPPED after rows existed (the 2.5s race only exists where timers
+ *      do); dead subtitle hosts rode the call past the app's 60s kill and
+ *      zeroed already-extracted rows. On device the subs pass is now skipped
+ *      entirely - rows return immediately, subs stay a timers-runtime bonus.
+ *
  * v3.0.0 (device-realistic waterfall, 2026-09-14):
  *  Device report: 4.34.0 AND 4.35.0 both showed 0 streams on device while
  *  the same builds resolved 5-9 rows in node. Runtime truth read straight
@@ -98,8 +112,15 @@
 var TMDB_API_KEY = "1865f43a0549ca50d341dd9ab8b29f49";
 var TMDB_BASE_URL = "https://api.themoviedb.org/3";
 var MULTI_DECRYPT_API = "https://enc-dec.app/api";
-var CINEJOY_API = "https://api.shegu.st";
-var CINEJOY_BASE = "https://cinejoy.to";
+// v3.1.0: the site moved - cinejoy.to now 301s to cinejoy.pk and the player
+// API moved api.shegu.st -> api.wing.st (same protocol: /servers, crush.wasm,
+// binary POST /g; live-verified 2026-09-25 from the real site's network trace:
+// api.wing.st/info -> imdb.wing.st/tt... -> api.wing.st/servers -> POST /g 200
+// -> ok.*.cc master.m3u8). The old host answered 502 on /servers, which zeroed
+// the native lane for everyone ("cinejoy doesnt show stream even its
+// available in the website").
+var CINEJOY_API = "https://api.wing.st";
+var CINEJOY_BASE = "https://cinejoy.pk";
 var WYZIE_API = "https://sub.wyzie.io";
 var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
@@ -1524,7 +1545,14 @@ function getStreams(tmdbId, mediaType, season, episode) {
             })
           ]);
         } else {
-          withSubs = yield withSharedSubs(out, ctx);
+          // Device (QuickJS realm: no timers): withSharedSubs is a sequential
+          // chain of blocking fetches with 12s caps each - but NO race cap
+          // wraps the chain, so unreachable subtitle hosts rode the whole
+          // call past the app's 60s kill and the ALREADY-EXTRACTED rows died
+          // with it (the "0 rows on device while node shows rows" report).
+          // Streams are the product; on device we return rows immediately and
+          // skip the garnish. Node/TV (timers exist) keep the 2.5s race.
+          withSubs = out;
         }
       } catch (eSubs) {
         withSubs = out;

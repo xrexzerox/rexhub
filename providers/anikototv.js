@@ -411,7 +411,14 @@ function pickBestCandidate(candidates, meta, season) {
     else if (!isMovie && isItemOva) candidateScore *= 0.7;
     if (candidateScore > highScore) { highScore = candidateScore; best = candidate; }
   }
-  return highScore >= 0.25 ? best : null;
+  // v9.1.0 (pack 4.44.0): accuracy gate raised 0.25 -> 0.6 per the
+  // "provides inaccurate stream links" report. At 0.25, word-overlap
+  // lookalikes sailed through - e.g. target "Blue Box" vs candidate
+  // "Blue Period" scores dice=0.5, and franchise-adjacent movies outranked
+  // the actual series. 0.6 keeps: exact titles (1.0), prefix matches with
+  // healthy length ratio (0.8 * ratio), containment with strong overlap,
+  // and season-tagged candidates (bonus +0.35). Junk pairs die below it.
+  return highScore >= 0.6 ? best : null;
 }
 
 async function resolveTargetSeasonId(baseAnimeId, seasonNumber, seasonName) {

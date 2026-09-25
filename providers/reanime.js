@@ -179,7 +179,16 @@ async function queryReanimeIndex(query, year, targetAlId) {
         unique.push(c);
     }
     unique.sort(function (a, b) { return b.score - a.score; });
-    return unique.length > 0 ? unique[0] : null;
+    // v1.3.0 (pack 4.44.0): accuracy gate per the "provides inaccurate stream
+    // links" report. Previously the top candidate was returned REGARDLESS of
+    // score - a query like "Resident Evil" matched any anime sharing one
+    // word (score 4-58) and flixcloud served links for the wrong show.
+    // Accepted now only when the match is real: anilist-id equality (1000)
+    // or exact normalized-slug equality (>=100). Containment/word-overlap
+    // alone (50/4-per-word) is never enough - wrong-show links are worse
+    // than no links.
+    const best = unique.length > 0 ? unique[0] : null;
+    return best && (best.score >= 1000 || best.score >= 100) ? best : null;
 }
 
 async function fetchFlixServerList(slug, episodeNum, language, anilistId) {

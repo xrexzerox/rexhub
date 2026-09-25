@@ -411,19 +411,19 @@ var __nvFetch = (function() {
           })
           .then(function(r) {
             if (r.ok) return r.json();
-            if (r.status === 429 || r.status === 503) {
-              /* seed endpoint rate-limits bursts; on the serialized device bridge
-                 the immediate retry lands past the burst window */
-              return _fetchX(WINGS_BASE + '/seed?mediaId=' + tmdbId, {
-                  headers: WINGS_HEADERS
-                })
-                .then(function(r2) {
-                  return r2.ok ? r2.json() : null;
-                }, function() {
-                  return null;
-                });
-            }
-            return null;
+            /* v7.1.0: retry the seed on ANY non-ok (was 429/503 only). Live
+             * observation 2026-09-25: the endpoint intermittently answers
+             * 401 STREAMCRYPTO_SEED_INVALID / 500 for a brand-new seed -
+             * an immediate re-request with a fresh seed succeeds roughly
+             * half the time. One extra fetch max; device budget safe. */
+            return _fetchX(WINGS_BASE + '/seed?mediaId=' + tmdbId, {
+                headers: WINGS_HEADERS
+              })
+              .then(function(r2) {
+                return r2.ok ? r2.json() : null;
+              }, function() {
+                return null;
+              });
           })
           .then(function(j) {
             if (!j || !j.seed) throw new Error('no seed');
@@ -558,8 +558,16 @@ var FALLBACK_API_HOST = "https://api.speedracelight.com";
 var TMDB_API_KEY = "1865f43a0549ca50d341dd9ab8b29f49";
 var HEADERS = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-  "Referer": "https://www.cineby.at/",
-  "Origin": "https://www.cineby.at"
+  // v7.1.0 (pack 4.44.0): referer/origin re-pointed to www.vidking.net.
+  // These headers ride BOTH the native API calls AND every emitted row - and
+  // the stream CDN (moon.quietridge.top / the speedracelight family) is
+  // referer-allowlisted: live-verified 2026-09-25 on a fresh token,
+  // vidking.net referer -> 200 vnd.apple.mpegurl while www.cineby.at (dead
+  // domain, HTTP 000), cineby.rocks (the current site) and no-referer all
+  // 403. The old cineby.at headers guaranteed device 403 on every native-
+  // lane row ("just provide 2 streams and not working").
+  "Referer": "https://www.vidking.net/",
+  "Origin": "https://www.vidking.net"
 };
 var __nvCinebyDomainCache = null;
 
@@ -1060,11 +1068,18 @@ module.exports = { getStreams: getStreams };
     return Promise.all(probes).then(function (qs) {
       var ranked = [];
       rows.forEach(function (row, k) {
-        var q = qs[k];
-        if (!q) return; // unknown resolution -> removed
-        if (q === "CAM") return; // cam / sd / sub-720 -> removed
-        row.s.quality = q;
-        ranked.push({ s: row.s, i: row.i, q: q });
+        var s = row.s;
+        var tq = normQ(s.quality) || normQ(String(s.title || "").split("\n")[0]) || qFromText((s.name || "") + " " + (s.title || ""));
+        // nv best-settings 4.26.0: FAIL-OPEN quality gate (pack parity, was
+        // fail-closed here - unknown rows were dropped entirely, one reason
+        // cineby showed only 2 rows while its payload carried more)
+        // - a successful HLS probe result wins
+        // - otherwise the title-derived quality is kept, else "Auto"
+        // - rows whose title explicitly tags CAM/telesync/sub-720p are removed
+        var q = qs[k] || tq || "Auto";
+        if (q === "CAM") return;
+        s.quality = q;
+        ranked.push({ s: s, i: row.i, q: q });
       });
       // best first so dedupe keeps the strongest duplicate (stable)
       ranked.sort(function (a, b) {

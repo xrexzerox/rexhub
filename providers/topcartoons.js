@@ -4,6 +4,16 @@
  * (topcartoons.tv, 2026-09): search -> cartoon page -> episode links (skip
  * anchor "#" placeholders) -> watch page -> og:video:url direct mp4.
  * 8s deadline on every call, 8s overall cap, nvio post-filter attached.
+ * v2.6.0 (pack 4.44.0, 2026-09-25): WRONG-CONTENT FIX ("topcartoons
+ * provides inaccurate stream links"). The WP search picker took the FIRST
+ * <article a> href with zero verification - live repro: searching "Resident
+ * Evil" returned "Ben 10 - Permanent Retirement" because the first article
+ * on the results page is a sidebar/recent post, not the query match. The
+ * picker now reads every article's heading text and only accepts an article
+ * whose title actually matches the requested TMDB title (normalized, all
+ * query words covered, either-direction containment); no matching article ->
+ * ZERO rows. Modern titles the site does not carry now correctly return []
+ * instead of an unrelated cartoon that plays.
  */
 var __nvFetch = (function () {
   var _f = null;
@@ -174,22 +184,56 @@ function extractQuality(url) {
   return "720p"; // cartoon masters are sd/pal-era encodes; treat as 720p baseline
 }
 
+function normalizeTitle(s) {
+  return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+/** v2.6.0: article heading must genuinely match the requested title.
+ *  Accept when the normalized article title contains the normalized query
+ *  (or vice versa for short queries) AND every query word appears in the
+ *  article title - "Resident Evil" can never match "Ben 10 ..." again. */
+function articleTitleMatches(articleText, wantedTitle) {
+  var a = normalizeTitle(articleText);
+  var w = normalizeTitle(wantedTitle);
+  if (!a || !w) return false;
+  if (a === w) return true;
+  var words = w.split(" ").filter(Boolean);
+  if (!words.length) return false;
+  for (var i = 0; i < words.length; i++) {
+    if (a.indexOf(words[i]) === -1) return false;
+  }
+  return a.indexOf(w) !== -1 || w.indexOf(a) !== -1 || words.length >= 2;
+}
+
 function getStreams(tmdbId, mediaType, season, episode) {
   return __nvFetch("https://api.themoviedb.org/3/" + (mediaType === "tv" ? "tv" : "movie") + "/" + tmdbId + "?api_key=" + TMDB_API_KEY)
     .then(function (r) { return r.json(); })
     .then(function (meta) {
       var title = meta && (meta.title || meta.name);
       if (!title) return [];
-      // 1. site search
+      // 1. site search - collect ALL articles with their heading text and
+      //    pick the first one whose title VERIFIES against the query
       return __nvFetch(BASE_URL + "/?s=" + encodeURIComponent(title), { headers: HEADERS })
         .then(function (r) { return r.text(); })
         .then(function (html) {
           var $ = cheerio.load(html);
           var cartoonLink = "";
-          $("article a").each(function (i, el) {
+          $("article").each(function (i, el) {
             if (cartoonLink) return;
-            var href = abs($(el).attr("href"));
-            if (href) cartoonLink = href;
+            var a = $(el).find("a");
+            var href = a && a.length ? abs(a.attr("href")) : "";
+            if (!href) return;
+            var heading = "";
+            ["h1", "h2", "h3", "h4"].some(function (tag) {
+              var h = $(el).find(tag);
+              if (h && h.length && h.text && h.text().trim()) {
+                heading = h.text().trim();
+                return true;
+              }
+              return false;
+            });
+            if (!heading) heading = (a.text && a.text().trim()) || "";
+            if (articleTitleMatches(heading, title)) cartoonLink = href;
           });
           if (!cartoonLink) return [];
           // 2. cartoon page -> episode links (A→Z episode grid)

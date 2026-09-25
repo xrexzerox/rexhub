@@ -359,6 +359,34 @@ function isUpdateVideo(url) {
     u.includes("need_update")
   );
 }
+
+// v7.1.0 (pack 4.44.0): ad/teaser row filter per the "streams not working
+// only ads" report. The aoneroom/wefeed bff mixes promotional assets into
+// the stream list (ad breaks, sponsor clips, teaser/trailer placeholders);
+// on the device these play as ads. Anything that advertises itself in the
+// URL path is dropped alongside the update-gate videos above.
+function isAdStream(url) {
+  if (!url) return false;
+  const u = url.toLowerCase();
+  return (
+    u.includes("/ads/") ||
+    u.includes("/ad/") ||
+    u.includes("adbreak") ||
+    u.includes("advert") ||
+    u.includes("/promo/") ||
+    u.includes("promoclip") ||
+    u.includes("sponsor") ||
+    u.includes("interstitial") ||
+    u.includes("/banner/") ||
+    u.includes("/teaser/") ||
+    u.includes("trailer") ||
+    u.includes("/sample/") ||
+    u.includes("/test/") ||
+    u.includes("/demo/") ||
+    u.includes("/announcement/") ||
+    u.includes("/splash/")
+  );
+}
 function isVersionGatedResponse(responseData) {
   if (!responseData || typeof responseData !== "object") return false;
   const UPDATE_CODES = new Set([
@@ -504,6 +532,7 @@ async function getStreamLinks(subjectId, season, episode) {
             const secureUrl = ensureHttps(stream.url);
             if (!secureUrl) continue;
             if (isUpdateVideo(secureUrl)) continue;
+            if (isAdStream(secureUrl)) continue;
             const formatType = getFormatType(secureUrl);
             const qualNum = parseQualityNumber(stream.resolutions || stream.quality || "");
             if (qualNum > 0 && qualNum < 720) continue;
@@ -538,6 +567,7 @@ async function getStreamLinks(subjectId, season, episode) {
               const secureUrl = ensureHttps(video.resourceLink);
               if (!secureUrl) continue;
               if (isUpdateVideo(secureUrl)) continue;
+              if (isAdStream(secureUrl)) continue;
               const formatType = getFormatType(secureUrl);
               const qualNum = parseQualityNumber(video.resolution);
               if (qualNum > 0 && qualNum < 720) continue;

@@ -1,7 +1,7 @@
 {
   "name": "NV Plugins",
-  "version": "4.43.1",
-  "description": "nv-plugins 4.43.0: eclipsia swap-in - 13 providers replaced with the codeberg eclipsia/nuvio-plugin sources the user pointed at (anikototv/zyrvael, playimdb/zevran, purstream/wrenok, moviesdrive/vornix, cinemacity/svartok, vidfast/nyxora, cinefreak/novus, moviebox/mavonyx, movieshunt/kryxalia, castle/karnis, movieblast/jyniq, 4khdhub/hexion, vidlink/haylox) and 10 providers ADDED per the same user directive (bingr, vegamovies, showbox, reanime, animeworld, vidcore, animesalt, vidking, vidrock, ctgmovies) - 32 -> 42 scrapers. All 23 files are the readable eclipsia implementations with device-killer fixes only: guarded atob (realm may lack it), require(crypto-js) -> embedded pure-JS crypto (castle AES subset, HMAC-SHA256 parity-verified vs node:crypto, TripleDES-CBC parity-verified vs node:crypto), require(cheerio) -> embedded nv cheerio-lite v2 (parity-tested vs real cheerio), URLSearchParams -> nvQs, TextDecoder -> nvUtf8Decode, retry sleeps guarded (realm timers optional), and 7 corrupted a-href selectors in the eclipsia sources repaired (their lanes silently returned nothing upstream). Subtitles: English/Tagalog tracks pass through wherever upstream provides them; dual-audio rows keep their language labels; provider settings (audio/dub toggles, FebBox token) preserved where the eclipsia file exposes them. Untouched per standing rules: netmirror (verbatim soryn), torrents/torrentio merge + seeders floor, kisskh/asianhub/pinoyhub/tagalogtorrents, cinejoy, miruro, pencuri, nakios, topcartoons, animotvslash, hdhub4u, videasy, vidlove, peachify, cineby, fibwatch, xpass - all byte-identical to 4.42.0. nv-plugins 4.42.0: netmirror v17.0.0 is now VERBATIM the readable implementation the user pasted (soryn shape: plain constants + small async functions, 341 lines/11.6KB vs v16's 1,040 lines) - 'please replace netmirror with pasted code' honored literally. The only addition is a guarded globalThis.atob fallback prepended above the paste, because device runtimes may lack global atob (every previously device-validated netmirror guarded it) and a raw atob ReferenceError would kill all four NewTV platform lanes. With the paste, the Alpha lane and the nvio post-filter tail are gone; the pasted code self-enforces the >=720p floor via its own meetsQualityFilter, is fail-soft per platform, and passes captions through unfiltered (soryn parity). Sandbox: 125988 S1E1 -> net27 1080p +4 subs in 0.6s; junk-id and tv-without-s/e fail-soft [] with no hang; NewTV domains fail-fast from datacenter IPs (retail/device IPs reach them directly, as device-verified in earlier rounds). All other 31 providers byte-identical to 4.41.0. nv-plugins 4.41.0: netmirror v16.0.0 flat soryn port - the file now reads top-to-bottom exactly like the eclipsia soryn.js the user pasted (plain constants + async functions, no classes/state machines/polyfill blocks): 59,339B/1,429 lines -> ~39.5KB/1,040. Lanes kept: net27 embed-tmdb, NewTV (device-hardened vs soryn: 24-domain sequential probe -> 6 concurrent + 60s negative memo + single-flight, so a failed probe can no longer burn 24 dead fetches per call), and the user-validated Alpha lane (Alpha rows only, pure-JS HMAC-SHA256 signed watchpvr). soryn's while(true) episode pagination is capped (8 pages/12 seasons/18-fetch budget), watchpvr retries 3->2, no timers anywhere. onSettings dropped (hasSettings:false); captions fixed to the v15 default English+Filipino. All other 31 providers byte-identical to 4.40.0. nv-plugins 4.32.0: torrents = ONE merged torrent provider (Torrentio + TorrentsDB backends, seeders >= 5 hard floor, 720p/1080p rows only, debrid gear-icon support) - torrentio.js removed as redundant. Playback fixes: anikototv v1.2.0 emits the tokened master plus an ALT host row (ncdn.imgnex.top; same token verified valid on both CDN hosts), miruro v2.9.0 unchanged. Stream-source fixes: videasy v2.1.0 returns the streams it finds inside the 8s budget (progressive 6.8s deadline - previously all rows were raced away), vidlove v2.0.0 re-pointed to the live player API api.vidlove.cc (routes recovered from the player bundle), xpass v2.0.0 ports the site's own AES-GCM v3 data lane (key = SHA256 over the signed token, decrypt verified against the live blob), and moviebox/vidfast/peachify gained the api.vidlove.cc fallback lane (moviebox2 / ipcloud+megaknight / warden+tcloud server subsets). moviesdrive follows the site's host rotation (new1 -> new4) and parallelizes archive resolution. peachify re-enabled. vidlink/cineby verified healthy - vidlink only returns 0 rows for titles whose upstream tops out below 720p (pack rule), and cinemacity remains Cloudflare-gated from datacenter IPs (device-validated historically).",
+  "version": "4.44.0",
+  "description": "nv-plugins 4.44.0: the ACCURACY + DEAD-DOMAIN pass, fixing the user's round of reports on the Resident Evil (2026, tmdb 1423191) test title. (1) cinejoy 3.1.0: the site moved (cinejoy.to 301 -> cinejoy.pk, api.shegu.st dead 502) - native chain re-pointed to api.wing.st/cinejoy.pk (protocol unchanged, live-verified from the site's own network trace: /info + imdb.wing.st enrichment + /servers + binary /g -> HLS), and the device (no-timer) shared-subtitles pass no longer runs uncapped after rows exist - dead sub hosts can no longer ride a call past the app's 60s kill and zero extracted rows. (2) WRONG-CONTENT fixes per 'purstream, topcartoons, anikoto, Re:ANIME provides inaccurate stream links': purstream 3.0.0 verifies candidates through TMDB title + year +-1 AND the site's own sheet tmdbId cross-reference (no verified candidate -> zero rows, never the wrong movie - previously the 2021 Raccoon City film played for the 2026 release); topcartoons 2.6.0 verifies the WP-search article heading against the requested title (live repro: 'Resident Evil' served 'Ben 10 - Permanent Retirement'); anikototv 9.1.0 raises the title-match gate 0.25 -> 0.6; reanime 1.3.0 requires anilist-id or exact-slug equality instead of accepting any word-overlap candidate. (3) cineby 7.1.0: rows carried dead-domain cineby.at referers while the stream CDN is referer-allowlisted (vidking.net 200 vs everything else 403, live-verified on fresh tokens) - headers re-pointed to vidking.net; post-filter tail upgraded to the pack-standard FAIL-OPEN quality gate. (4) moviebox 7.1.0: isAdStream filter drops promo/ad/sponsor/teaser assets mixed into the bff stream list ('only ads' report). (5) Fold-in: vegamovies 1.5.0 + movieshunt 7.1.0 + torrents 2.1.0 carry the addon-side fixes (raw-source vcloud bridge, movieshunt.monster JSON lookup lane, torrents env-base overrides + per-request debrid config + 8s lane timeout) restoring pack<->addon byte-identity. The accuracy philosophy: a title absent from (or mismatched with) a site's catalog now yields ZERO rows - never inaccurate ones. Standing exclusions unchanged: kisskh/asianhub/pinoyhub/tagalogtorrents untouched; cinemacity stays Tagalog/Filipino; netmirror verbatim soryn paste untouched; asian-catalog needs no redeploy. 42 providers.",
   "author": "xrexzerox",
   "scrapers": [
     {
@@ -75,8 +75,8 @@
     {
       "id": "torrents",
       "name": "Torrents",
-      "description": "Torrents v1.6 - NEW debrid settings: Debrid Provider (Real-Debrid/Premiumize/AllDebrid/TorBox/...) + API key via the provider gear icon; the key is injected into the Torrentio URL (/{provider}={key}/stream/...) so torrents resolve to INSTANT cached http links instead of magnets (pure P2P fallback stays). 8s cap kept. | v2.0.0 (4.32.0 merge): torrentio.js merged in - one provider now covers Torrentio + TorrentsDB; torrentio v1.2.0 real-field parser (title blob seeders/size/tracker, name line-2 quality); seeders >= 5 hard floor; 720p/1080p rows ONLY; no-magnet rows dropped; seeders-sorted cap 15; debrid prefix on Torrentio when configured",
-      "version": "2.0.0",
+      "description": "Torrents v2.1.0 (merged Torrentio + TorrentsDB, seeders >= 5 floor, 720p/1080p only) folds the addon-side v1.4 improvements back into the pack: base URLs can be overridden via TORRENTIO_API_BASE / TORRENTSDB_API_BASE (guarded env read; device defaults unchanged), per-request debrid config via the optional 5th getStreams argument (addon URL debrid tags; device callers pass nothing and global settings still win), and the per-lane fetch timeout rises 6s -> 8s (Torrentio slows under load).",
+      "version": "2.1.0",
       "author": "Streamline",
       "supportedTypes": [
         "movie",
@@ -307,8 +307,8 @@
     {
       "id": "cineby",
       "name": "Cineby",
-      "description": "Deobfuscated 4.38.0: mangled identifiers renamed, obfuscated literals resolved, formatted; endpoints/behavior identical to 4.37.0 (equivalence-verified). • readable rebuild",
-      "version": "7.0.0",
+      "description": "Cineby v7.1.0 PLAYBACK FIX ('just provide 2 streams and not working'): the native lane's headers (and thus every native-lane row) still pointed at www.cineby.at - a DEAD domain - while the stream CDN is referer-allowlisted; live-verified on a fresh token: vidking.net referer -> 200 HLS, cineby.at / cineby.rocks / no referer -> 403. Headers now ride vidking.net (proven accepted, same backend the WINGS lane already used). The post-filter tail also upgrades to the pack-standard FAIL-OPEN quality gate (4.26.0): probe result wins, else title-derived, else Auto - unknown rows are no longer silently dropped, another reason the sheet showed only 2 rows.",
+      "version": "7.1.0",
       "author": "Nuvio Team (AIO merge)",
       "supportedTypes": [
         "movie",
@@ -328,8 +328,8 @@
     {
       "id": "movieshunt",
       "name": "MoviesHunt",
-      "description": "MoviesHunt v7.0.0 - replaced with the eclipsia kryxalia.js source (readable netmirror-style, codeberg v10.0.0). Device fixes: guarded atob fallback. Subtitles pass through as upstream emits them (English/Tagalog kept when provided).",
-      "version": "7.0.0",
+      "description": "MoviesHunt v7.1.0 folds the addon-side v1.2 fix back into the pack: the site moved to movieshunt.monster and its search became client-rendered (static entry-title markup gone; results come from the internal JSON endpoint). lookupApiSearch() calls the site's own lookup.php JSON API first with the old HTML lane as fallback, and the hubcloud TLD regex was widened for the .cx -> .ist rotation. Byte-identity with the deployed addon restored.",
+      "version": "7.1.0",
       "author": "xrexzerox",
       "supportedTypes": [
         "movie"
@@ -348,8 +348,8 @@
     {
       "id": "purstream",
       "name": "Purstream",
-      "description": "Purstream v2.0.0 - replaced with the eclipsia wrenok.js source (readable netmirror-style, codeberg v10.0.0). Device fixes: verbatim (device-clean). Subtitles pass through as upstream emits them (English/Tagalog kept when provided).",
-      "version": "2.0.0",
+      "description": "Purstream v3.0.0 WRONG-CONTENT FIX ('provides inaccurate stream links'): the picker took the FIRST type-matching search hit - for Resident Evil (2026, tmdb 1423191) the site's first movie hit is 'Bienvenue a Raccoon City' (2021), so the 2021 film played for the 2026 release. Now three-layer verification honoring the 'add condition using imdb/tmdb search' directive: L1 candidate title must match the TMDB title (normalized, either-direction containment), L2 release year within +-1 of TMDB when exposed, L3 DETERMINISTIC - the media sheet's own tmdbId cross-reference must equal the requested tmdbId or the candidate is rejected (next candidate tried; none verifies -> ZERO rows instead of wrong ones). All fetches capped (guarded race on timers-runtimes; app-budget bounded on device).",
+      "version": "3.0.0",
       "author": "Streamline",
       "supportedTypes": [
         "movie",
@@ -394,8 +394,8 @@
     {
       "id": "topcartoons",
       "name": "TopCartoons",
-      "description": "TopCartoons: clean rewrite decoded from AIO and repaired against the live site (episode links skip # anchors, og:video:url direct mp4 extraction), 8s/12s deadlines, nvio post-filter attached. v4.24.0 speed pass: overall provider run capped at 8s (was 12s) so a stalled lane can never hold the stream sheet. v4.39.0 device fix: removed the top-level require(\"cheerio-without-node-native\") that crashed the provider at LOAD on the device QuickJS realm (no require) - guarded loader keeps real cheerio on node and falls back to a pure-JS cheerio-lite subset on device.",
-      "version": "2.5.0",
+      "description": "TopCartoons v2.6.0 WRONG-CONTENT FIX ('provides inaccurate stream links'): live repro had a search for 'Resident Evil' return 'Ben 10 - Permanent Retirement' because the picker grabbed the FIRST article on the WordPress results page (sidebar/recent post) with zero verification. The picker now reads each article's heading and accepts only a genuine title match against the TMDB title (normalized, every query word present, either-direction containment); no match -> [] - modern titles the classic-cartoon site does not carry now correctly return nothing instead of an unrelated cartoon that plays.",
+      "version": "2.6.0",
       "author": "xrexzerox",
       "supportedTypes": [
         "movie",
@@ -505,8 +505,8 @@
     {
       "id": "moviebox",
       "name": "MovieBox",
-      "description": "MovieBox v7.0.0 - replaced with the eclipsia mavonyx.js source (readable netmirror-style, codeberg v10.0.0). Device fixes: guarded retry sleep (realm timers optional). keeps dub-language toggles (onSettings). Subtitles pass through as upstream emits them (English/Tagalog kept when provided).",
-      "version": "7.0.0",
+      "description": "MovieBox v7.1.0 ad-row filter ('streams not working only ads'): an isAdStream gate drops promotional assets the bff mixes into the stream list (ad breaks, sponsor clips, teaser/trailer/sample/announcement paths) alongside the existing update-gate video filter. Title+year match scoring (>=40 with year bonus) was already strict and is unchanged. Note: api4.aoneroom.com blocks datacenter IPs entirely (403) - device/retail networks only.",
+      "version": "7.1.0",
       "author": "xrexzerox",
       "supportedTypes": [
         "movie",
@@ -662,8 +662,8 @@
     {
       "id": "anikototv",
       "name": "AnikotoTV",
-      "description": "AnikotoTV v9.0.0 - replaced with the eclipsia zyrvael.js source (readable netmirror-style, codeberg v10.0.0). Device fixes: verbatim (device-clean source: the XMLHttpRequest hits are just the X-Requested-With header). keeps its audio/sub toggles (onSettings): Japanese (Sub) etc.. Subtitles pass through as upstream emits them (English/Tagalog kept when provided).",
-      "version": "9.0.0",
+      "description": "AnikotoTV v9.1.0 accuracy gate: the title-match acceptance threshold rises 0.25 -> 0.6 per the 'provides inaccurate stream links' report - at 0.25 word-overlap lookalikes passed (target 'Blue Box' vs candidate 'Blue Period' scores dice 0.5) and franchise-adjacent movies outranked the actual series. 0.6 still keeps exact titles, healthy prefix/containment matches and season-tagged candidates (+0.35 season bonus); junk pairs die below it. Lanes/decryption untouched (megaplay getSourcesNew AES-CBC flow re-verified live: enc blob -> master.m3u8).",
+      "version": "9.1.0",
       "author": "xrexzerox",
       "supportedTypes": [
         "movie",
@@ -707,8 +707,8 @@
     {
       "id": "cinejoy",
       "name": "Cinejoy",
-      "description": "Cinejoy v3.0.0: device-realistic waterfall. 4.36.0 root cause: the QuickJS plugin runtime ships NO timers and every fetch is one blocking bridge call, so v2.x parallel lanes ran sequentially with all caps inert and blew the app's 60s provider kill -> 0 rows on device. v3.0.0 bounds the provider by fetch count instead: WINGS one server at a time (cdn/m4uhd/lamovie, meta+seed cached) -> vidlove moviebox2 -> native shegu chain only when it can work (cjRelay relay on device, direct binary in node tests). Render addon lane removed (cold wake blocks the bridge 30-60s). Native 4K on Mobile: set the 'Cinejoy relay base URL' setting to your asian-catalog worker (bundle v5.7.0+ carries /cjg + /cjs). Chain re-verified live 2026-09-14.",
-      "version": "3.0.0",
+      "description": "Cinejoy from cinejoy.pk: v3.1.0 re-points the player API after the site moved - cinejoy.to now 301s to cinejoy.pk and the API host api.shegu.st died (502 on /servers), so the native chain was dead for everyone ('shows no streams even though the website has the title'). Both constants now target api.wing.st / cinejoy.pk - protocol unchanged (/servers + encrypted token + binary /g + dec; live-verified from the site's own network trace) so TV/PC/node resolve directly and Mobile resolves via the cjRelay worker. Also fixes a device subs hang: on the QuickJS realm (no timers) the shared-subtitles pass ran UNCAPPED after rows already existed and dead subtitle hosts could ride the call past the app's 60s kill, zeroing extracted rows - on device rows now return immediately (subs stay a timers-runtime bonus). WINGS + vidlove text lanes unchanged.",
+      "version": "3.1.0",
       "author": "Streamline",
       "supportedTypes": [
         "movie",
@@ -753,8 +753,8 @@
     {
       "id": "vegamovies",
       "name": "VegaMovies",
-      "description": "VegaMovies (HC & VC) • Up-to 4k • Mainstream. Subtitles pass through as upstream emits them (English/Tagalog kept when provided). Source: eclipsia solunix.js (codeberg v10.0.0), readable netmirror-style build with device-killer fixes.",
-      "version": "1.4.0",
+      "description": "VegaMovies v1.5.0 folds the addon-side v1.2 fix back into the pack: fetchHtml keeps the RAW page source on the $ handle ($.nvRaw) because the embedded cheerio-lite strips <script> bodies - but the vcloud/hubcloud bridge (var url = atob(atob('...'))) lives inside a script tag, so extractSingleVc could not see it and the lane silently returned 0 rows. Raw-source regex extraction restored; byte-identity with the deployed addon restored.",
+      "version": "1.5.0",
       "author": "xrexzerox",
       "supportedTypes": [
         "movie",
@@ -805,8 +805,8 @@
     {
       "id": "reanime",
       "name": "Re:ANIME",
-      "description": "Re:ANIME • Sub/Dub • Anime. Subtitles pass through as upstream emits them (English/Tagalog kept when provided). Source: eclipsia praxiel.js (codeberg v10.0.0), readable netmirror-style build with device-killer fixes.",
-      "version": "1.2.0",
+      "description": "Re:ANIME v1.3.0 accuracy gate: queryReanimeIndex previously returned its top candidate REGARDLESS of score, so any anime sharing one word with the query (score 4-58) became 'the match' and flixcloud served wrong-show links. Accepted now only on anilist-id equality (1000) or exact normalized-slug equality (>=100); containment/word-overlap alone is never enough - wrong-show links are worse than no links. Flix server/extract lanes untouched.",
+      "version": "1.3.0",
       "author": "xrexzerox",
       "supportedTypes": [
         "movie",
