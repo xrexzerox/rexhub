@@ -1,8 +1,8 @@
 {
   "name": "nuvio-all-addon",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "private": true,
-  "description": "Stremio-protocol addon that merges every nv-plugins scraper into one stream source for Nuvio / NuvioTV - v1.6.0 adds the TMDB/IMDb existence gate",
+  "description": "Stremio-protocol addon that merges every nv-plugins scraper into one stream source for Nuvio / NuvioTV - v1.6.1 fixes gate false-fails and adds playback-header passthrough",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

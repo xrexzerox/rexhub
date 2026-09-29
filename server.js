@@ -17,7 +17,7 @@ const { loadProviders, getStreamsCached, stats, imdbToTmdb } = require("./lib/ru
 
 const PORT = parseInt(process.env.PORT || "10000", 10);
 const ADDON_ID = process.env.ADDON_ID || "community.nvio.all";
-const VERSION = process.env.ADDON_VERSION || "1.6.0";
+const VERSION = process.env.ADDON_VERSION || "1.6.1";
 const ADDON_NAME = process.env.ADDON_NAME || "NVio All Streams";
 const HOST = process.env.RENDER_EXTERNAL_URL || ""; // Render injects this
 
@@ -88,10 +88,14 @@ function manifest(cfg) {
       `nv-plugins sources (KissKH, Pencuri, VidFast, 4KHDHub, VidKing, NetMirror, ` +
       `AsianHub, PinoyMoviesHub and more) plus torrent lanes (Torrentio + ` +
       `TorrentsDB + TagalogTorrents) served as magnets/infoHashes that Nuvio ` +
-      `resolves with debrid or its P2P engine. v1.6.0: a TMDB/IMDb existence ` +
-      `gate verifies every id BEFORE the scrapers run - content absent from or ` +
-      `mismatched against IMDb/TMDB returns zero rows instead of inaccurate ` +
-      `ones; provider rows carry version chips for diagnosis.` +
+      `resolves with debrid or its P2P engine. v1.6.1 gate FIXES: missing ` +
+      `IMDb ids on TMDB no longer zero real Asian/anime/Pinoy titles, IMDb ` +
+      `verification accepts only exact-id hits, and every row now carries its ` +
+      `playback headers (behaviorHints.proxyHeaders) so referer-locked lanes ` +
+      `actually PLAY. v1.6.0: a TMDB/IMDb existence gate verifies every id ` +
+      `BEFORE the scrapers run - content absent from or mismatched against ` +
+      `IMDb/TMDB returns zero rows instead of inaccurate ones; provider rows ` +
+      `carry version chips for diagnosis.` +
       (isCfg ? ` Debrid active: ${cfg.provider} (via addon URL).` :
         ` Add debrid instantly: append ?debrid=realdebrid&key=YOURKEY to this URL.`),
     logo: "https://raw.githubusercontent.com/" + "nv-plugins/main/README.md", // harmless if 404s
